@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import "@fontsource-variable/noto-sans-thai/wght.css";
+import "@fontsource-variable/noto-serif-thai/wght.css";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
