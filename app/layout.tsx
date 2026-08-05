@@ -1,14 +1,20 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import "@fontsource-variable/noto-sans-thai/wght.css";
 import "@fontsource-variable/noto-serif-thai/wght.css";
 import "./globals.css";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
-  const base = `${protocol}://${host}`;
+// Resolved at build time so the whole dashboard can be statically generated.
+// Vercel injects VERCEL_PROJECT_PRODUCTION_URL for the production domain and
+// VERCEL_URL for preview deployments.
+function siteUrl() {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return vercelHost ? `https://${vercelHost}` : "http://localhost:3000";
+}
+
+export function generateMetadata(): Metadata {
+  const base = siteUrl();
 
   return {
     metadataBase: new URL(base),

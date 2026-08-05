@@ -77,3 +77,24 @@ tests/                       parser · engine · UI
 ## หน้าจอ
 
 แต่ละหน้าเปิดตรงได้ด้วย hash — `#overview` `#matching` `#exceptions` `#bookings` `#receipts` `#statements` `#rules`
+
+## Deploy บน Vercel
+
+เป็น Next.js มาตรฐาน Vercel ตรวจจับเองได้ ไม่ต้องตั้งค่าเพิ่ม หน้า `/` ถูก prerender เป็น static
+ส่วน `/api/dataset` เป็น serverless function
+
+```bash
+npx vercel login      # ครั้งแรกเท่านั้น (เปิด browser ยืนยันตัวตน)
+npx vercel --prod
+```
+
+`data/` และ `lib/dataset.generated.json` ต้องอยู่ใน deployment เพราะ build รัน `npm run data:build`
+ซึ่งอ่านไฟล์ต้นฉบับใน `data/` ก่อนเสมอ
+
+> **ก่อน deploy สู่สาธารณะ** ข้อมูลชุดนี้เป็นข้อมูลจริง — เลขที่บัญชีธนาคาร ชื่อและเบอร์โทรลูกค้า
+> และประวัติเงินเข้า-ออกทั้งเดือนของบริษัท URL ของ Vercel เปิดสาธารณะโดยค่าเริ่มต้น
+> ควรเปิด **Deployment Protection** (Settings → Deployment Protection → Vercel Authentication
+> หรือ Password Protection) ก่อนหรือทันทีหลัง deploy ครั้งแรก
+
+ตั้ง `NEXT_PUBLIC_SITE_URL` ได้ถ้าต้องการกำหนดโดเมนใน metadata เอง มิฉะนั้นระบบใช้
+`VERCEL_PROJECT_PRODUCTION_URL` ที่ Vercel ใส่ให้อัตโนมัติ
