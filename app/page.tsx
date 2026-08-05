@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 type ViewId = "overview" | "uploads" | "runs" | "review" | "reservations" | "statements" | "invoices" | "ota" | "audit" | "rules";
 type Tone = "green" | "blue" | "amber" | "red" | "slate";
@@ -8,6 +8,21 @@ type ExceptionItem = {
   id: string; reason: string; title: string; reservation: string; source: string; target: string;
   delta: string; age: string; severity: "สูง" | "กลาง" | "ต่ำ"; status: "ต้องตรวจสอบ" | "รอเอกสาร" | "มอบหมายแล้ว"; owner: string;
 };
+type DocumentItem = { name: string; type: string; documentType: string; period: string; rows: string; status: string; control: string; time: string };
+type StatementMatch = {
+  id: string; date: string; time: string; account: string; bankRefs: string[]; description: string; bankAmount: string;
+  matchType: "1:1" | "N:1" | "1:N" | "Exception"; score: number; dateDelta: string; status: string; tone: Tone; page: string;
+  bookings: { reservation: string; guest: string; stay: string; receiptId: string; receiptDate: string; amount: string; allocated: string; method: string; sourceRow: string }[];
+};
+
+const monthOptions = [
+  { value: "2026-08", label: "สิงหาคม 2569" }, { value: "2026-07", label: "กรกฎาคม 2569" }, { value: "2026-06", label: "มิถุนายน 2569" },
+];
+const documentTypeLabels: Record<string, string> = {
+  collection_report: "รายงานรับเงิน", ledger: "บัญชีแยกประเภท", bank_statement_885: "Statement •••885",
+  bank_statement_987: "Statement •••987", bank_statement_posh: "Statement Kbank-Posh", ota_settlement: "OTA Settlement",
+};
+const monthLabel = (period: string) => monthOptions.find((month) => month.value === period)?.label ?? period;
 
 const navGroups: { label: string; items: { id: ViewId; label: string; icon: string; badge?: string }[] }[] = [
   { label: "งานประจำวัน", items: [
@@ -43,12 +58,38 @@ const initialExceptions: ExceptionItem[] = [
   { id: "EX-00038", reason: "INVALID_ROW", title: "ข้อมูลแถวต้นทางไม่สมบูรณ์", reservation: "ไม่ระบุ", source: "—", target: "—", delta: "—", age: "1 วัน", severity: "ต่ำ", status: "ต้องตรวจสอบ", owner: "ยังไม่มอบหมาย" },
 ];
 
-const initialDocuments = [
-  { name: "Collection_Report_Jul_2026.xlsx", type: "รายงานรับเงิน", rows: "387 แถว", status: "เผยแพร่แล้ว", control: "ผ่าน", time: "วันนี้ 13:42" },
-  { name: "Ledger_Jul_2026.xlsx", type: "บัญชีแยกประเภท", rows: "854 payment lines", status: "เผยแพร่แล้ว", control: "ผ่าน", time: "วันนี้ 13:38" },
-  { name: "KBank_885_Jul_2026.pdf", type: "Bank Statement", rows: "52 รายการ", status: "กระทบยอดแล้ว", control: "฿0.00", time: "วันนี้ 13:31" },
-  { name: "KBank_987_Jul_2026.pdf", type: "Bank Statement", rows: "122 รายการ", status: "กระทบยอดแล้ว", control: "฿0.00", time: "วันนี้ 13:25" },
-  { name: "Booking_Settlement_0726.csv", type: "OTA Settlement", rows: "39 bookings", status: "ตรวจสอบแล้ว", control: "ผ่าน", time: "เมื่อวาน 17:06" },
+const initialDocuments: DocumentItem[] = [
+  { name: "Collection_Report_Jul_2026.xlsx", type: "รายงานรับเงิน", documentType: "collection_report", period: "2026-07", rows: "387 แถว", status: "เผยแพร่แล้ว", control: "ผ่าน", time: "วันนี้ 13:42" },
+  { name: "Ledger_Jul_2026.xlsx", type: "บัญชีแยกประเภท", documentType: "ledger", period: "2026-07", rows: "854 payment lines", status: "เผยแพร่แล้ว", control: "ผ่าน", time: "วันนี้ 13:38" },
+  { name: "KBank_885_Jul_2026.pdf", type: "Statement •••885", documentType: "bank_statement_885", period: "2026-07", rows: "52 รายการ", status: "กระทบยอดแล้ว", control: "฿0.00", time: "วันนี้ 13:31" },
+  { name: "KBank_987_Jul_2026.pdf", type: "Statement •••987", documentType: "bank_statement_987", period: "2026-07", rows: "122 รายการ", status: "กระทบยอดแล้ว", control: "฿0.00", time: "วันนี้ 13:25" },
+  { name: "Booking_Settlement_0726.csv", type: "OTA Settlement", documentType: "ota_settlement", period: "2026-07", rows: "39 bookings", status: "ตรวจสอบแล้ว", control: "ผ่าน", time: "เมื่อวาน 17:06" },
+];
+
+const statementMatches: StatementMatch[] = [
+  { id: "GRP-885-0725-01", date: "25 ก.ค. 2569", time: "14:18", account: "•••885", bankRefs: ["KB885-250726-1842"], description: "TRANSFER FROM NAPASSORN", bankAmount: "฿6,450.00", matchType: "N:1", score: 92, dateDelta: "+1 วัน", status: "จับคู่แล้ว", tone: "green", page: "Statement หน้า 2 · บรรทัด 31", bookings: [
+    { reservation: "10158230476834210083", guest: "คุณนภัสสร อินทร์แก้ว", stay: "25–26 ก.ค. 2569", receiptId: "REC-0725-0188", receiptDate: "24 ก.ค. 2569", amount: "฿500.00", allocated: "฿500.00", method: "KbankGL885", sourceRow: "Collection row 214" },
+    { reservation: "10158230476834210083", guest: "คุณนภัสสร อินทร์แก้ว", stay: "25–26 ก.ค. 2569", receiptId: "REC-0725-0189", receiptDate: "24 ก.ค. 2569", amount: "฿5,950.00", allocated: "฿5,950.00", method: "KbankGL885", sourceRow: "Collection row 215" },
+  ] },
+  { id: "GRP-885-0726-02", date: "26 ก.ค. 2569", time: "11:06", account: "•••885", bankRefs: ["KB885-260726-1106"], description: "TRANSFER FROM ORATHAI", bankAmount: "฿380.00", matchType: "Exception", score: 42, dateDelta: "0 วัน", status: "ยอดต่าง ฿3,620", tone: "red", page: "Statement หน้า 2 · บรรทัด 37", bookings: [
+    { reservation: "10862708254763192824", guest: "คุณอรทัย ศรีสุข", stay: "26–28 ก.ค. 2569", receiptId: "REC-0726-0204", receiptDate: "26 ก.ค. 2569", amount: "฿4,000.00", allocated: "฿380.00 candidate", method: "KbankGL885", sourceRow: "Collection row 232" },
+  ] },
+  { id: "GRP-885-0724-03", date: "24 ก.ค. 2569", time: "09:42", account: "•••885", bankRefs: ["KB885-240726-0942"], description: "TRANSFER FROM DANIEL W", bankAmount: "฿12,600.00", matchType: "1:1", score: 95, dateDelta: "+1 วัน", status: "จับคู่แล้ว", tone: "green", page: "Statement หน้า 2 · บรรทัด 25", bookings: [
+    { reservation: "10578393061567240019", guest: "Mr. Daniel Wong", stay: "24–27 ก.ค. 2569", receiptId: "REC-0723-0172", receiptDate: "23 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "KbankGL885", sourceRow: "Collection row 198" },
+  ] },
+  { id: "GRP-987-0727-04", date: "27 ก.ค. 2569", time: "16:12", account: "•••987", bankRefs: ["KB987-270726-1612"], description: "MOBILE TRANSFER SOMCHAI", bankAmount: "฿11,000.00", matchType: "N:1", score: 91, dateDelta: "0 วัน", status: "จับคู่แล้ว", tone: "green", page: "Statement หน้า 4 · บรรทัด 68", bookings: [
+    { reservation: "10491182076341028570", guest: "คุณสมชาย จิตดี", stay: "27–28 ก.ค. 2569", receiptId: "REC-0727-0216", receiptDate: "27 ก.ค. 2569", amount: "฿5,500.00", allocated: "฿5,500.00", method: "KbankGL987", sourceRow: "Collection row 246" },
+    { reservation: "10491182076341028570", guest: "คุณสมชาย จิตดี", stay: "27–28 ก.ค. 2569", receiptId: "REC-0727-0217", receiptDate: "27 ก.ค. 2569", amount: "฿5,500.00", allocated: "฿5,500.00", method: "KbankGL987", sourceRow: "Collection row 247" },
+  ] },
+  { id: "GRP-987-0728-05", date: "28 ก.ค. 2569", time: "10:31", account: "•••987", bankRefs: ["KB987-280726-1029", "KB987-280726-1031"], description: "2 BANK CREDITS · SAME SENDER", bankAmount: "฿5,900 + ฿3,000", matchType: "1:N", score: 90, dateDelta: "0 วัน", status: "จับคู่แล้ว", tone: "blue", page: "Statement หน้า 4 · บรรทัด 75–76", bookings: [
+    { reservation: "10672049581300645218", guest: "คุณปาริชาติ แสงทอง", stay: "28–29 ก.ค. 2569", receiptId: "REC-0728-0231", receiptDate: "28 ก.ค. 2569", amount: "฿8,900.00", allocated: "฿8,900.00", method: "KbankGL987", sourceRow: "Collection row 261" },
+  ] },
+  { id: "GRP-987-0729-06", date: "29 ก.ค. 2569", time: "18:44", account: "•••987", bankRefs: ["KB987-290726-1844"], description: "SMART SCBT BATCH 50400", bankAmount: "฿50,400.00", matchType: "N:1", score: 88, dateDelta: "+1 วัน", status: "รอ Settlement", tone: "amber", page: "Statement หน้า 5 · บรรทัด 83", bookings: [
+    { reservation: "10578393061567240019", guest: "Mr. Daniel Wong", stay: "24–27 ก.ค. 2569", receiptId: "OTA-REC-301", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 281" },
+    { reservation: "10763244081296770511", guest: "Ms. Grace Lee", stay: "25–28 ก.ค. 2569", receiptId: "OTA-REC-302", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 282" },
+    { reservation: "10977136480127883402", guest: "Mr. Ken Ito", stay: "26–29 ก.ค. 2569", receiptId: "OTA-REC-303", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 283" },
+    { reservation: "10344091766280471509", guest: "Ms. Mina Park", stay: "27–30 ก.ค. 2569", receiptId: "OTA-REC-304", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 284" },
+  ] },
 ];
 
 const runRows = [
@@ -99,15 +140,30 @@ export default function Home() {
   const [documents, setDocuments] = useState(initialDocuments);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState("2026-07");
+  const [uploadDefaults, setUploadDefaults] = useState({ period: "2026-07", documentType: "collection_report" });
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState("");
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const go = (view: ViewId) => { setActive(view); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openUpload = (period = selectedPeriod, documentType = "collection_report") => { setUploadDefaults({ period, documentType }); setUploadOpen(true); };
   const filteredExceptions = useMemo(() => exceptions.filter((item) => {
     const statusMatch = exceptionFilter === "ทั้งหมด" || item.status === exceptionFilter;
     return statusMatch && `${item.id} ${item.reason} ${item.title} ${item.reservation}`.toLowerCase().includes(search.toLowerCase());
   }), [exceptions, exceptionFilter, search]);
+
+  useEffect(() => {
+    fetch("/api/documents").then((response) => response.json()).then((payload: { documents?: { name: string; documentType: string; period: string; status: string; createdAt: string }[] }) => {
+      if (!payload.documents?.length) return;
+      const stored = payload.documents.map((doc): DocumentItem => ({
+        name: doc.name, type: documentTypeLabels[doc.documentType] ?? doc.documentType, documentType: doc.documentType, period: doc.period,
+        rows: doc.status === "queued" ? "รอ parser" : "พร้อมใช้", status: doc.status === "queued" ? "เข้าคิวแล้ว" : doc.status,
+        control: doc.status === "queued" ? "รอตรวจ" : "ผ่าน", time: new Date(doc.createdAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+      }));
+      setDocuments((current) => [...stored, ...current.filter((local) => !stored.some((remote) => remote.name === local.name && remote.period === local.period))]);
+    }).catch(() => undefined);
+  }, []);
 
   const resolveException = async (item: ExceptionItem) => {
     setExceptions((current) => current.filter((candidate) => candidate.id !== item.id));
@@ -131,9 +187,10 @@ export default function Home() {
     setUploading(true);
     try {
       const response = await fetch("/api/documents", { method: "POST", body: data });
-      const payload = await response.json() as { error?: string };
+      const payload = await response.json() as { error?: string; document?: { documentType: string; period: string } };
       if (!response.ok) throw new Error(payload.error ?? "Upload failed");
-      setDocuments((current) => [{ name: file.name, type: String(data.get("documentType")), rows: "กำลังประมวลผล", status: "เข้าคิวแล้ว", control: "รอตรวจ", time: "เมื่อสักครู่" }, ...current]);
+      const documentType = String(data.get("documentType")); const period = String(data.get("period"));
+      setDocuments((current) => [{ name: file.name, type: documentTypeLabels[documentType] ?? documentType, documentType, period, rows: "รอ parser", status: "เข้าคิวแล้ว", control: "รอตรวจ", time: "เมื่อสักครู่" }, ...current]);
       setUploadOpen(false); notify("อัปโหลดสำเร็จและส่งเข้าคิวประมวลผลแล้ว"); form.reset();
     } catch (error) { notify(error instanceof Error ? error.message : "อัปโหลดไม่สำเร็จ"); }
     finally { setUploading(false); }
@@ -147,14 +204,14 @@ export default function Home() {
       <div className="sidebar-status"><p><span /> ระบบพร้อมใช้งาน</p><button><span>สว</span><span><b>สุวรรณา ว.</b><small>ผู้ดูแลระบบ</small></span><i>•••</i></button></div>
     </aside>
     <main>
-      <header className="topbar"><div className="topbar-brand"><span className="brand-mark"><i /><i /><i /></span><b>ClearClose</b></div><div className="period"><small>รอบบัญชี</small><button>1–31 ก.ค. 2569 <b>⌄</b></button></div><div className="top-actions"><span className="live-state"><i /> LIVE STORAGE</span><button className="square-button" aria-label="ค้นหา">⌕</button><button className="square-button alert" aria-label="แจ้งเตือน">○<i /></button><button className="primary-button" onClick={() => setUploadOpen(true)}>＋ นำเข้าเอกสาร</button></div></header>
+      <header className="topbar"><div className="topbar-brand"><span className="brand-mark"><i /><i /><i /></span><b>ClearClose</b></div><div className="period"><small>รอบบัญชี</small><select value={selectedPeriod} onChange={(event) => setSelectedPeriod(event.target.value)}>{monthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}</select></div><div className="top-actions"><span className="live-state"><i /> LIVE STORAGE</span><button className="square-button" aria-label="ค้นหา">⌕</button><button className="square-button alert" aria-label="แจ้งเตือน">○<i /></button><button className="primary-button" onClick={() => openUpload()}>＋ นำเข้าเอกสาร</button></div></header>
       <div className="content">
-        {active === "overview" && <Overview onGo={go} onUpload={() => setUploadOpen(true)} />}
-        {active === "uploads" && <Uploads documents={documents} onUpload={() => setUploadOpen(true)} />}
+        {active === "overview" && <Overview onGo={go} onUpload={() => openUpload()} />}
+        {active === "uploads" && <Uploads documents={documents} period={selectedPeriod} setPeriod={setSelectedPeriod} onUpload={openUpload} />}
         {active === "runs" && <Runs />}
         {active === "review" && <Review exceptions={filteredExceptions} allCount={exceptions.length} filter={exceptionFilter} setFilter={setExceptionFilter} search={search} setSearch={setSearch} selected={selectedException} setSelected={setSelectedException} onResolve={resolveException} />}
         {active === "reservations" && <Reservations />}
-        {active === "statements" && <Statements />}
+        {active === "statements" && <Statements period={selectedPeriod} onUpload={openUpload} />}
         {active === "invoices" && <Invoices invoices={invoices} onIssue={issueInvoice} notify={notify} />}
         {active === "ota" && <Ota />}
         {active === "audit" && <Audit />}
@@ -162,7 +219,7 @@ export default function Home() {
         <footer><span>ClearClose · ruleset v1.0.0</span><p>Asia/Bangkok · ข้อมูลสาธิตจากรอบ กรกฎาคม 2569</p><button onClick={() => notify("เปิดศูนย์ช่วยเหลือแล้ว")}>ศูนย์ช่วยเหลือ ↗</button></footer>
       </div>
     </main>
-    {uploadOpen && <UploadModal busy={uploading} onClose={() => setUploadOpen(false)} onSubmit={uploadDocument} />}
+    {uploadOpen && <UploadModal key={`${uploadDefaults.period}-${uploadDefaults.documentType}`} busy={uploading} defaults={uploadDefaults} onClose={() => setUploadOpen(false)} onSubmit={uploadDocument} />}
     {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
   </div>;
 }
@@ -179,8 +236,27 @@ function Overview({ onGo, onUpload }: { onGo: (view: ViewId) => void; onUpload: 
   </>;
 }
 
-function Uploads({ documents, onUpload }: { documents: typeof initialDocuments; onUpload: () => void }) {
-  return <><PageHeading view="uploads" action={<button className="primary-button large" onClick={onUpload}>＋ นำเข้าเอกสารใหม่</button>} /><section className="metrics-grid three"><Metric label="เอกสารในรอบนี้" value="5 ไฟล์" detail="นำเข้าสำเร็จทั้งหมด" tone="green" badge="ไม่ซ้ำ" /><Metric label="ข้อมูลที่เผยแพร่" value="1,652 แถว" detail="canonical records พร้อมใช้" tone="blue" badge="100% valid" /><Metric label="เวลาประมวลผลเฉลี่ย" value="18 วินาที" detail="Parse · Validate · Publish" tone="slate" badge="SLA < 2 นาที" /></section><section className="panel pipeline-panel"><PanelTitle kicker="Processing pipeline" title="สถานะงานนำเข้า" /><div className="pipeline">{["Uploaded", "Parsing", "Validating", "Published", "Reconciling", "Completed"].map((step, index) => <div key={step} className="done"><span>{index < 5 ? "✓" : "6"}</span><b>{step}</b><small>{index === 0 ? "SHA-256 + MIME" : index === 1 ? "parser v1.3.0" : index === 2 ? "control ฿0.00" : index === 3 ? "1,652 rows" : index === 4 ? "ruleset v1.0.0" : "13:42:51"}</small></div>)}</div></section><section className="panel data-panel"><PanelTitle kicker="Documents" title="เอกสารทั้งหมด" action={<div className="table-actions"><button>☷ ตัวกรอง</button><button>⇩ Export log</button></div>} /><div className="responsive-table"><table><thead><tr><th>ชื่อไฟล์</th><th>ประเภท</th><th>ข้อมูล</th><th>Control</th><th>สถานะ</th><th>เวลานำเข้า</th><th /></tr></thead><tbody>{documents.map((doc) => <tr key={`${doc.name}-${doc.time}`}><td><span className={`file-icon ${doc.name.endsWith(".pdf") ? "pdf" : doc.name.endsWith(".csv") ? "csv" : "sheet"}`}>{doc.name.endsWith(".pdf") ? "P" : doc.name.endsWith(".csv") ? "C" : "X"}</span><b>{doc.name}</b></td><td>{doc.type}</td><td>{doc.rows}</td><td><Pill tone={doc.control === "ผ่าน" || doc.control === "฿0.00" ? "green" : "amber"}>{doc.control}</Pill></td><td>{doc.status}</td><td>{doc.time}</td><td><button className="row-button">›</button></td></tr>)}</tbody></table></div></section></>;
+function Uploads({ documents, period, setPeriod, onUpload }: { documents: DocumentItem[]; period: string; setPeriod: (value: string) => void; onUpload: (period: string, type: string) => void }) {
+  const monthDocuments = documents.filter((document) => document.period === period);
+  const requirements = [
+    { type: "collection_report", label: "รายงานรับเงิน", detail: "Excel · รายการรับ/คืนเงิน", required: true },
+    { type: "ledger", label: "บัญชีแยกประเภท", detail: "Excel · Reservation + payment lines", required: true },
+    { type: "bank_statement_885", label: "Statement •••885", detail: "PDF · KBank GL885", required: true },
+    { type: "bank_statement_987", label: "Statement •••987", detail: "PDF · KBank GL987", required: true },
+    { type: "bank_statement_posh", label: "Statement Kbank-Posh", detail: "PDF · ช่องทาง Posh", required: false },
+    { type: "ota_settlement", label: "OTA Settlement", detail: "CSV/XLSX · Booking, Trip, Airbnb", required: false },
+  ];
+  const ready = requirements.filter((requirement) => monthDocuments.some((document) => document.documentType === requirement.type)).length;
+  return <>
+    <PageHeading view="uploads" action={<div className="month-picker"><span>เดือนเอกสาร</span><select value={period} onChange={(event) => setPeriod(event.target.value)}>{monthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}</select></div>} />
+    <section className="month-summary"><div><span className="month-calendar"><b>{period.slice(5)}</b><small>{period.slice(0, 4)}</small></span><p><small>ชุดเอกสารประจำเดือน</small><b>{monthLabel(period)}</b><span>{ready} จาก {requirements.length} ประเภท · Required {requirements.filter((item) => item.required && monthDocuments.some((document) => document.documentType === item.type)).length}/4</span></p></div><div className="month-progress"><span><i style={{ width: `${Math.round((ready / requirements.length) * 100)}%` }} /></span><b>{Math.round((ready / requirements.length) * 100)}% ครบถ้วน</b><button className="primary-button" onClick={() => onUpload(period, "collection_report")}>＋ อัปโหลดไฟล์เดือนนี้</button></div></section>
+    <section className="document-checklist">{requirements.map((requirement) => {
+      const document = monthDocuments.find((item) => item.documentType === requirement.type);
+      return <article key={requirement.type} className={document ? "ready" : "missing"}><div><span className={`check-icon ${document ? "ready" : "missing"}`}>{document ? "✓" : "+"}</span><p><b>{requirement.label}</b><small>{requirement.detail}</small></p>{requirement.required ? <Pill tone="blue">จำเป็น</Pill> : <Pill>เพิ่มเติม</Pill>}</div>{document ? <><strong>{document.name}</strong><span><Pill tone={document.control === "ผ่าน" || document.control === "฿0.00" ? "green" : "amber"}>{document.status}</Pill><button onClick={() => onUpload(period, requirement.type)}>อัปโหลดแทนที่</button></span></> : <><strong>ยังไม่มีไฟล์สำหรับ {monthLabel(period)}</strong><span><Pill tone={requirement.required ? "red" : "slate"}>{requirement.required ? "ยังไม่ครบ" : "ไม่บังคับ"}</Pill><button onClick={() => onUpload(period, requirement.type)}>เลือกไฟล์</button></span></>}</article>;
+    })}</section>
+    <section className="panel pipeline-panel"><PanelTitle kicker="Processing pipeline" title="ขั้นตอนหลังอัปโหลด" /><div className="pipeline">{["Uploaded", "Parsing", "Validating", "Published", "Reconciling", "Completed"].map((step, index) => <div key={step}><span>{index + 1}</span><b>{step}</b><small>{index === 0 ? "R2 + SHA-256" : index === 1 ? "ตามชนิดเอกสาร" : index === 2 ? "control totals" : index === 3 ? "canonical rows" : index === 4 ? "ruleset version" : "พร้อมตรวจ"}</small></div>)}</div></section>
+    <section className="panel data-panel"><PanelTitle kicker={`Documents · ${monthLabel(period)}`} title="ประวัติไฟล์ของเดือนนี้" action={<button className="primary-button" onClick={() => onUpload(period, "collection_report")}>＋ เพิ่มเอกสาร</button>} />{monthDocuments.length ? <div className="responsive-table"><table><thead><tr><th>ชื่อไฟล์</th><th>ประเภท</th><th>ข้อมูล</th><th>Control</th><th>สถานะ</th><th>เวลานำเข้า</th><th /></tr></thead><tbody>{monthDocuments.map((doc) => <tr key={`${doc.name}-${doc.time}`}><td><span className={`file-icon ${doc.name.endsWith(".pdf") ? "pdf" : doc.name.endsWith(".csv") ? "csv" : "sheet"}`}>{doc.name.endsWith(".pdf") ? "P" : doc.name.endsWith(".csv") ? "C" : "X"}</span><b>{doc.name}</b></td><td>{doc.type}</td><td>{doc.rows}</td><td><Pill tone={doc.control === "ผ่าน" || doc.control === "฿0.00" ? "green" : "amber"}>{doc.control}</Pill></td><td>{doc.status}</td><td>{doc.time}</td><td><button className="row-button">›</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><span>↑</span><h3>ยังไม่มีเอกสารสำหรับ {monthLabel(period)}</h3><p>เริ่มจากรายงานรับเงินและบัญชีแยกประเภท แล้วจึงเพิ่ม Statement ของแต่ละบัญชี</p><button className="primary-button" onClick={() => onUpload(period, "collection_report")}>อัปโหลดเอกสารแรก</button></div>}</section>
+  </>;
 }
 
 function Runs() { return <><PageHeading view="runs" action={<button className="secondary-button">⟳ รันใหม่ด้วย ruleset ล่าสุด</button>} /><section className="metrics-grid"><Metric label="รอบทั้งหมด" value="4 รอบ" detail="ครอบคลุม Phase 1, 2 และ 4" tone="blue" /><Metric label="รายการที่จับคู่" value="671" detail="จาก candidate ทั้งหมด 741" tone="green" /><Metric label="Grouped matches" value="12 กลุ่ม" detail="N:1 จำนวน 8 · 1:N จำนวน 4" tone="green" /><Metric label="คะแนนเฉลี่ย" value="94.2" detail="Auto-match threshold ≥ 85" tone="amber" /></section><section className="panel data-panel"><PanelTitle kicker="Run history" title="ผลการกระทบยอด" action={<button className="text-button">เปรียบเทียบรอบ →</button>} /><RunTable /></section><section className="case-grid"><article className="case-card"><Pill tone="green">N:1 · MATCHED</Pill><h3>หลาย Receipt → Bank เดียว</h3><div className="equation"><span>฿500</span><i>＋</i><span>฿5,950</span><b>=</b><span className="bank-value">฿6,450</span></div><p>reservation เดียวกัน · วันที่ธนาคาร +1 วัน · score 92</p></article><article className="case-card"><Pill tone="green">1:N · MATCHED</Pill><h3>Receipt เดียว → หลาย Bank</h3><div className="equation"><span className="bank-value">฿8,900</span><b>=</b><span>฿5,900</span><i>＋</i><span>฿3,000</span></div><p>sender เดียวกัน · exact total · score 90</p></article><article className="case-card danger"><Pill tone="red">EXCEPTION</Pill><h3>ยอดต่าง ห้ามปรับอัตโนมัติ</h3><div className="equation"><span>฿4,000</span><b>≠</b><span>฿380</span><i>→</i><span className="delta-value">฿3,620</span></div><p>AMOUNT_MISMATCH · ส่งเข้าคิวตรวจสอบ</p></article></section></>;
@@ -193,7 +269,47 @@ function Review({ exceptions, allCount, filter, setFilter, search, setSearch, se
 function Reservations() { const [selected, setSelected] = useState(reservations[0]); return <><PageHeading view="reservations" action={<label className="search-box wide">⌕<input placeholder="ค้นหาเลขที่จอง ชื่อลูกค้า หรือยอดเงิน" /></label>} /><section className="master-detail"><div className="panel reservation-list"><div className="list-header"><b>665 รายการจอง</b><button>☷ ตัวกรอง</button></div>{reservations.map((item) => <button key={item.id} className={selected.id === item.id ? "active" : ""} onClick={() => setSelected(item)}><span><b>{item.guest}</b><small className="mono">{item.id}</small><small>{item.stay} · {item.method}</small></span><span><b>{item.receipt}</b><Pill tone={item.status === "ยอดต่าง" ? "red" : item.status === "Grouped match" ? "blue" : "green"}>{item.status}</Pill></span></button>)}</div><div className="panel reservation-detail"><PanelTitle kicker="Reservation detail" title={selected.guest} action={<Pill tone={selected.status === "ยอดต่าง" ? "red" : "green"}>{selected.status}</Pill>} /><div className="reservation-meta"><span><small>Reservation No.</small><b className="mono">{selected.id}</b></span><span><small>วันเข้าพัก</small><b>{selected.stay}</b></span><span><small>Payment method</small><b>{selected.method}</b></span></div><div className="money-flow"><article><small>Receipt</small><b>{selected.receipt}</b><span>รายงานรับเงิน</span></article><i>→</i><article><small>Ledger</small><b>{selected.ledger}</b><span>บัญชีแยกประเภท</span></article><i>→</i><article className={selected.status === "ยอดต่าง" ? "mismatch" : ""}><small>Bank / Settlement</small><b>{selected.bank}</b><span>{selected.status === "ยอดต่าง" ? "ผลต่าง ฿3,620.00" : "ยืนยันแล้ว"}</span></article></div><div className="timeline"><h3>ลำดับเหตุการณ์</h3>{["สร้างรายการจองใน Smart Order", "บันทึกรับเงินและนำเข้า Ledger", "กระทบยอดด้วย ruleset v1.0.0", selected.status === "ยอดต่าง" ? "สร้าง AMOUNT_MISMATCH" : "ยืนยันการจับคู่สำเร็จ"].map((event, index) => <div key={event}><span className={index === 3 && selected.status === "ยอดต่าง" ? "danger" : ""}>{index + 1}</span><p><b>{event}</b><small>{25 + index} ก.ค. 2569 · {10 + index}:24 น.</small></p></div>)}</div></div></section></>;
 }
 
-function Statements() { return <><PageHeading view="statements" action={<button className="primary-button large">＋ นำเข้า Statement</button>} /><section className="statement-grid"><StatementCard suffix="885" opening="฿4,887.33" credit="฿208,590.00" debit="฿6,000.00" closing="฿207,477.33" matched="50/51" tone="green" /><StatementCard suffix="987" opening="฿119,580.88" credit="฿931,565.54" debit="฿791,272.85" closing="฿259,873.57" matched="77/97" tone="blue" /></section><section className="two-column bank-layout"><div className="panel"><PanelTitle kicker="Classification · •••987" title="ประเภทธุรกรรมที่ตรวจพบ" /><div className="classification-list">{[["Direct / unclassified transfer", "89", "฿546,130.00", "blue"], ["SMART SCBT batch", "13", "฿215,589.13", "amber"], ["Foreign trade reference", "5", "฿64,846.41", "slate"], ["Internal company transfer", "3", "฿105,000.00", "green"]].map((row) => <div key={row[0]}><span className={`class-dot ${row[3]}`} /><p><b>{row[0]}</b><small>{row[1]} รายการ</small></p><strong>{row[2]}</strong></div>)}</div></div><div className="panel"><PanelTitle kicker="Control checks" title="สมการยอดคงเหลือ" /><div className="control-equation"><span><small>ยอดยกมา</small><b>฿119,580.88</b></span><i>＋</i><span><small>ฝาก</small><b>฿931,565.54</b></span><i>−</i><span><small>ถอน</small><b>฿791,272.85</b></span><i>−</i><span><small>ยอดยกไป</small><b>฿259,873.57</b></span></div><div className="control-pass"><span>✓</span><p><b>Control delta = ฿0.00</b><small>Statement ผ่านการตรวจและพร้อมกระทบยอด</small></p></div></div></section><section className="panel data-panel"><PanelTitle kicker="Unmatched bank transactions" title="รายการธนาคารที่ต้องตรวจต่อ" /><div className="responsive-table"><table><thead><tr><th>วันที่</th><th>บัญชี</th><th>รายละเอียด</th><th>ประเภท</th><th>เครดิต</th><th>Candidate</th><th>สถานะ</th></tr></thead><tbody><tr><td>26 ก.ค. 2569</td><td>•••885</td><td>TRANSFER FROM ORATHAI</td><td>Direct receipt</td><td>฿380.00</td><td>Receipt ฿4,000.00</td><td><Pill tone="red">ต่าง ฿3,620</Pill></td></tr><tr><td>29 ก.ค. 2569</td><td>•••987</td><td>SMART SCBT 50400</td><td>OTA batch</td><td>฿50,400.00</td><td>12,600 × 4</td><td><Pill tone="amber">รอ Settlement</Pill></td></tr></tbody></table></div></section></>;
+function Statements({ period, onUpload }: { period: string; onUpload: (period: string, type: string) => void }) {
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [matchFilter, setMatchFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<StatementMatch | null>(statementMatches[0]);
+  const visibleMatches = statementMatches.filter((match) => {
+    if (period !== "2026-07") return false;
+    const accountMatch = accountFilter === "all" || match.account.endsWith(accountFilter);
+    const statusMatch = matchFilter === "all" || (matchFilter === "matched" ? match.tone === "green" : match.tone !== "green");
+    const haystack = `${match.id} ${match.account} ${match.description} ${match.bankRefs.join(" ")} ${match.bookings.map((booking) => `${booking.reservation} ${booking.guest} ${booking.receiptId}`).join(" ")}`.toLowerCase();
+    return accountMatch && statusMatch && haystack.includes(query.toLowerCase());
+  });
+
+  return <>
+    <PageHeading view="statements" action={<button className="primary-button large" onClick={() => onUpload(period, "bank_statement_885")}>＋ นำเข้า Statement เดือนนี้</button>} />
+    {period === "2026-07" ? <section className="statement-grid">
+      <StatementCard suffix="885" opening="฿4,887.33" credit="฿208,590.00" debit="฿6,000.00" closing="฿207,477.33" matched="50/51" tone="green" onClick={() => setAccountFilter("885")} />
+      <StatementCard suffix="987" opening="฿119,580.88" credit="฿931,565.54" debit="฿791,272.85" closing="฿259,873.57" matched="77/97" tone="blue" onClick={() => setAccountFilter("987")} />
+    </section> : <section className="panel month-empty-banner"><span>□</span><p><b>ยังไม่มี Statement ที่ประมวลผลแล้วสำหรับ {monthLabel(period)}</b><small>อัปโหลด Statement 885 หรือ 987 เพื่อสร้างรายการจับคู่ของเดือนนี้</small></p><button className="primary-button" onClick={() => onUpload(period, "bank_statement_885")}>อัปโหลด Statement</button></section>}
+    <section className="panel statement-match-panel">
+      <PanelTitle kicker={`Statement matching · ${monthLabel(period)}`} title="ยอดใน Statement ↔ รายการจอง" action={<Pill tone="blue">คลิกแถวเพื่อดูหลักฐาน</Pill>} />
+      <div className="statement-toolbar">
+        <div className="tabs">{[["all", "ทุกบัญชี"], ["885", "•••885"], ["987", "•••987"]].map(([value, label]) => <button key={value} className={accountFilter === value ? "active" : ""} onClick={() => setAccountFilter(value)}>{label}</button>)}</div>
+        <div className="tabs compact">{[["all", "ทั้งหมด"], ["matched", "จับคู่แล้ว"], ["review", "ต้องตรวจ"]].map(([value, label]) => <button key={value} className={matchFilter === value ? "active" : ""} onClick={() => setMatchFilter(value)}>{label}</button>)}</div>
+        <label className="search-box">⌕<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาเลขจอง ชื่อลูกค้า หรือ Bank ref" /></label>
+      </div>
+      <div className="demo-data-note"><span>i</span><p><b>ตัวอย่างการจับคู่จากชุดข้อมูลเดิม</b><small>เมื่ออัปโหลดเอกสารใหม่ ระบบจะแสดงเลขหน้า แถวต้นทาง และยอดจัดสรรของเดือนที่เลือกในรูปแบบเดียวกัน</small></p></div>
+      <div className="responsive-table"><table className="statement-match-table"><thead><tr><th>วันเวลา / บัญชี</th><th>รายการใน Statement</th><th>ยอด Statement</th><th>รายการจองที่จับคู่</th><th>รูปแบบ</th><th>ผล</th><th /></tr></thead><tbody>{visibleMatches.map((match) => <tr key={match.id} className={selected?.id === match.id ? "selected" : ""} onClick={() => setSelected(match)}><td><b>{match.date} · {match.time}</b><small className="block mono">{match.account} · {match.bankRefs[0]}</small></td><td><b>{match.description}</b><small className="block">{match.page}</small></td><td><strong>{match.bankAmount}</strong></td><td><div className="booking-preview"><b>{match.bookings.length} รายการรับเงิน</b>{match.bookings.slice(0, 2).map((booking) => <small key={booking.receiptId}><span className="mono">{booking.reservation}</span> · {booking.amount}</small>)}</div></td><td><Pill tone={match.matchType === "Exception" ? "red" : "blue"}>{match.matchType}</Pill></td><td><Pill tone={match.tone}>{match.status}</Pill><small className="block">score {match.score}</small></td><td><button className="row-button" aria-label={`เปิดรายละเอียด ${match.id}`}>›</button></td></tr>)}</tbody></table></div>
+      {!visibleMatches.length && <div className="empty-state"><span>⌕</span><h3>ไม่พบรายการที่ตรงกับตัวกรอง</h3><p>ลองเลือกทุกบัญชีหรือเปลี่ยนคำค้นหา</p></div>}
+      {selected && period === "2026-07" && <div className="statement-match-detail">
+        <div className="match-detail-head"><span><small>หลักฐานการจับคู่แบบตรวจสอบย้อนกลับได้</small><h3>{selected.id}</h3></span><span><Pill tone={selected.tone}>{selected.status}</Pill><button onClick={() => setSelected(null)}>×</button></span></div>
+        <div className="match-evidence-grid">
+          <article className="bank-evidence"><span className="evidence-label">BANK STATEMENT</span><h4>{selected.bankAmount}</h4><b>{selected.description}</b><dl><div><dt>บัญชี</dt><dd>{selected.account}</dd></div><div><dt>วันที่ / เวลา</dt><dd>{selected.date} · {selected.time}</dd></div><div><dt>Bank reference</dt><dd className="mono">{selected.bankRefs.join(", ")}</dd></div><div><dt>ตำแหน่งต้นฉบับ</dt><dd>{selected.page}</dd></div></dl></article>
+          <div className="match-connector"><span>{selected.matchType}</span><b>{selected.score}</b><small>match score</small><i>→</i><p>ช่วงวันที่ {selected.dateDelta}</p></div>
+          <div className="booking-allocations"><span className="evidence-label">BOOKING / RECEIPT ALLOCATION</span>{selected.bookings.map((booking) => <article className="allocation-row" key={`${selected.id}-${booking.receiptId}`}><div><b>{booking.guest}</b><button className="reservation-link">Reservation <span className="mono">{booking.reservation}</span> ↗</button><small>เข้าพัก {booking.stay}</small></div><dl><div><dt>Receipt</dt><dd className="mono">{booking.receiptId}</dd></div><div><dt>วันที่รับเงิน</dt><dd>{booking.receiptDate}</dd></div><div><dt>ยอด Receipt</dt><dd>{booking.amount}</dd></div><div><dt>ยอดจัดสรรกับ Bank</dt><dd><strong>{booking.allocated}</strong></dd></div><div><dt>ช่องทาง</dt><dd>{booking.method}</dd></div><div><dt>แถวต้นทาง</dt><dd>{booking.sourceRow}</dd></div></dl></article>)}</div>
+        </div>
+        <div className="allocation-summary"><span><small>Statement amount</small><b>{selected.bankAmount}</b></span><i>=</i><span><small>ยอดจัดสรรจาก Receipt</small><b>{selected.bookings.map((booking) => booking.amount).join(" + ")}</b></span><span className={`control-result ${selected.tone}`}><b>{selected.tone === "green" ? "✓ Control ตรงกัน" : "! ต้องตรวจสอบ"}</b><small>{selected.status}</small></span></div>
+        <div className="rule-evidence"><p><small>เหตุผลจาก Ruleset v1.0.0</small><b>{selected.matchType === "1:1" ? "ยอดตรงกัน + วันที่อยู่ในช่วง + ช่องทางตรง" : selected.matchType === "N:1" ? "ผลรวมหลาย Receipt เท่ากับยอดฝากหนึ่งรายการ" : selected.matchType === "1:N" ? "ยอด Receipt หนึ่งรายการเท่ากับผลรวมหลายยอดฝาก" : "ยอดไม่เท่ากัน ระบบจึงไม่อนุมัติอัตโนมัติ"}</b></p><div><button className="secondary-button">เปิดรายการจอง</button><button className="primary-button">{selected.tone === "green" ? "ดู Audit trail" : "ส่งเข้าคิวตรวจสอบ"}</button></div></div>
+      </div>}
+    </section>
+  </>;
 }
 
 function Invoices({ invoices, onIssue, notify }: { invoices: typeof initialInvoices; onIssue: (id: string) => void; notify: (value: string) => void }) { return <><PageHeading view="invoices" action={<button className="primary-button large" onClick={() => notify("สร้างร่างเอกสารใหม่แล้ว")}>＋ สร้างเอกสาร</button>} /><section className="metrics-grid"><Metric label="ร่าง" value="4 ฉบับ" detail="ยอดรวม ฿111,750.00" tone="slate" /><Metric label="รออนุมัติ" value="3 ฉบับ" detail="ต้องอนุมัติก่อนออกเลข" tone="amber" /><Metric label="ออกแล้ว" value="28 ฉบับ" detail="ยอดรวม ฿286,420.00" tone="blue" /><Metric label="ส่งสำเร็จ" value="27 ฉบับ" detail="Delivery rate 96.4%" tone="green" /></section><section className="panel data-panel"><PanelTitle kicker="Invoice workflow" title="เอกสารทั้งหมด" action={<div className="table-actions"><button>สถานะทั้งหมด⌄</button><button>⇩ Export</button></div>} /><div className="responsive-table"><table><thead><tr><th>เลขที่เอกสาร</th><th>ลูกค้า / Reservation</th><th>ยอดรวม</th><th>เวอร์ชัน</th><th>สถานะ</th><th>การส่ง</th><th /></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td><b>{invoice.no}</b><small className="block mono">{invoice.id}</small></td><td><b>{invoice.customer}</b><small className="block mono">{invoice.reservation}</small></td><td><b>{invoice.total}</b></td><td>v1 · PDF</td><td><Pill tone={invoice.status === "ส่งแล้ว" ? "green" : invoice.status === "ออกแล้ว" ? "blue" : invoice.status === "รออนุมัติ" ? "amber" : "slate"}>{invoice.status}</Pill></td><td>{invoice.sent}</td><td>{invoice.status === "รออนุมัติ" ? <button className="small-primary" onClick={() => onIssue(invoice.id)}>อนุมัติและออก</button> : <button className="row-button" onClick={() => notify(`เปิดตัวอย่าง ${invoice.no}`)}>›</button>}</td></tr>)}</tbody></table></div></section><section className="invoice-flow">{["Draft", "Approved", "Issued", "PDF v1", "Delivered"].map((step, index) => <div key={step}><span>{index + 1}</span><b>{step}</b><small>{index === 0 ? "ข้อมูลผู้ซื้อ" : index === 1 ? "ผู้ตรวจอนุมัติ" : index === 2 ? "Running number" : index === 3 ? "SHA-256 + Storage" : "Email / signed link"}</small></div>)}</section></>;
@@ -210,5 +326,5 @@ function Rules({ notify }: { notify: (value: string) => void }) { const [values,
 
 function PanelTitle({ kicker, title, action }: { kicker: string; title: string; action?: ReactNode }) { return <div className="panel-title"><span><small>{kicker}</small><h2>{title}</h2></span>{action}</div>; }
 function RunTable({ compact = false }: { compact?: boolean }) { const data = compact ? runRows.slice(0, 3) : runRows; return <div className="responsive-table"><table className="run-table"><thead><tr><th>รอบ</th><th>งานกระทบยอด</th><th>แหล่งข้อมูล</th><th>Matched</th><th>Exception</th><th>อัตรา</th><th>สถานะ</th><th /></tr></thead><tbody>{data.map((run) => <tr key={run.id}><td><span className="phase-badge">{run.phase}</span></td><td><b>{run.name}</b><small className="block mono">{run.id} · v1.0.0</small></td><td>{run.sources}</td><td><b>{run.matched}</b></td><td>{run.exception}</td><td><b>{run.rate}</b></td><td><Pill tone={run.tone}>{run.status}</Pill></td><td><button className="row-button">›</button></td></tr>)}</tbody></table></div>; }
-function StatementCard({ suffix, opening, credit, debit, closing, matched, tone }: { suffix: string; opening: string; credit: string; debit: string; closing: string; matched: string; tone: Tone }) { return <article className="statement-card"><div className="statement-head"><span><small>KASIKORNBANK</small><h2>บัญชีลงท้าย •••{suffix}</h2></span><Pill tone={tone}>Control ผ่าน · ฿0.00</Pill></div><div className="statement-values"><span><small>ยอดยกมา</small><b>{opening}</b></span><span><small>ยอดฝาก</small><b>{credit}</b></span><span><small>ยอดถอน</small><b>{debit}</b></span><span><small>ยอดยกไป</small><b>{closing}</b></span></div><div className="statement-foot"><span><b>{matched}</b><small>รายการจับคู่แล้ว</small></span><div className="bar"><i style={{ width: suffix === "885" ? "98%" : "79%" }} /></div><button>เปิดรายละเอียด →</button></div></article>; }
-function UploadModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) { return <div className="modal-backdrop" onMouseDown={onClose}><form className="upload-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={onClose}>×</button><span className="upload-symbol">↑</span><h2>นำเข้าเอกสารบัญชี</h2><p>ไฟล์จะถูกเก็บในพื้นที่ส่วนตัว ตรวจ SHA-256 เพื่อป้องกันไฟล์ซ้ำ และสร้างงานประมวลผลอัตโนมัติ</p><label><span>ประเภทเอกสาร</span><select name="documentType" defaultValue="collection_report"><option value="collection_report">รายงานรับเงิน</option><option value="ledger">บัญชีแยกประเภท</option><option value="bank_statement">Bank Statement</option><option value="ota_settlement">OTA Settlement</option></select></label><label><span>รอบบัญชี</span><select name="period" defaultValue="2026-07"><option value="2026-07">กรกฎาคม 2569</option><option value="2026-06">มิถุนายน 2569</option></select></label><label className="drop-zone"><input name="file" type="file" accept=".xlsx,.xls,.pdf,.csv" /><span>＋</span><b>วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก</b><small>XLSX, XLS, PDF, CSV · ไม่เกิน 25 MB</small></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>ยกเลิก</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "กำลังอัปโหลด…" : "อัปโหลดและประมวลผล"}</button></div></form></div>; }
+function StatementCard({ suffix, opening, credit, debit, closing, matched, tone, onClick }: { suffix: string; opening: string; credit: string; debit: string; closing: string; matched: string; tone: Tone; onClick: () => void }) { return <article className="statement-card"><div className="statement-head"><span><small>KASIKORNBANK</small><h2>บัญชีลงท้าย •••{suffix}</h2></span><Pill tone={tone}>Control ผ่าน · ฿0.00</Pill></div><div className="statement-values"><span><small>ยอดยกมา</small><b>{opening}</b></span><span><small>ยอดฝาก</small><b>{credit}</b></span><span><small>ยอดถอน</small><b>{debit}</b></span><span><small>ยอดยกไป</small><b>{closing}</b></span></div><div className="statement-foot"><span><b>{matched}</b><small>รายการจับคู่แล้ว</small></span><div className="bar"><i style={{ width: suffix === "885" ? "98%" : "79%" }} /></div><button onClick={onClick}>เปิดรายการจับคู่ →</button></div></article>; }
+function UploadModal({ busy, defaults, onClose, onSubmit }: { busy: boolean; defaults: { period: string; documentType: string }; onClose: () => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) { return <div className="modal-backdrop" onMouseDown={onClose}><form className="upload-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={onClose}>×</button><span className="upload-symbol">↑</span><h2>นำเข้าเอกสารประจำเดือน</h2><p>ไฟล์จะถูกจัดเก็บแยกตามเดือนและประเภทเอกสาร ตรวจ SHA-256 ป้องกันไฟล์ซ้ำ และส่งเข้าคิวประมวลผลโดยไม่เขียนทับต้นฉบับ</p><div className="selected-month"><small>ชุดเอกสารที่กำลังอัปโหลด</small><b>{monthLabel(defaults.period)}</b></div><label><span>ประเภทเอกสาร</span><select name="documentType" defaultValue={defaults.documentType}>{Object.entries(documentTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>เดือนเอกสาร</span><select name="period" defaultValue={defaults.period}>{monthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}</select></label><label className="drop-zone"><input name="file" type="file" required accept=".xlsx,.xls,.pdf,.csv" /><span>＋</span><b>วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก</b><small>XLSX, XLS, PDF, CSV · ไม่เกิน 25 MB</small></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>ยกเลิก</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "กำลังอัปโหลด…" : "อัปโหลดเข้าเดือนนี้"}</button></div></form></div>; }

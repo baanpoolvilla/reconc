@@ -13,6 +13,10 @@ test("builds the complete ClearClose workspace", async () => {
   assert.match(page, /นำเข้าเอกสาร/);
   assert.match(page, /OTA Settlement/);
   assert.match(page, /Phase 4/);
+  assert.match(page, /ชุดเอกสารประจำเดือน/);
+  assert.match(page, /ยอดใน Statement/);
+  assert.match(page, /หลักฐานการจับคู่แบบตรวจสอบย้อนกลับได้/);
+  assert.match(page, /Reservation/);
   assert.doesNotMatch(page, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
   assert.ok(serverBundle.length > 1000);
 });

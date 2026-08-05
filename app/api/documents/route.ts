@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
 import { auditEvents, documents } from "../../../db/schema";
@@ -30,13 +30,22 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const hash = await crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const db = getDb();
+    const duplicate = await db.select().from(documents).where(and(
+      eq(documents.sha256, sha256),
+      eq(documents.documentType, documentType),
+      eq(documents.period, period),
+    )).limit(1);
+    if (duplicate[0]) {
+      return Response.json({ error: `ไฟล์นี้ถูกนำเข้าเป็น ${documentType} ของรอบ ${period} แล้ว`, document: duplicate[0] }, { status: 409 });
+    }
+
     const storageKey = `source/demo-org/${period}/${documentType}/${id}/${file.name}`;
     const files = (env as unknown as { FILES: R2Bucket }).FILES;
     await files.put(storageKey, bytes, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
 
     const user = await getChatGPTUser();
     const actor = user?.email ?? "demo-user";
-    const db = getDb();
     await db.batch([
       db.insert(documents).values({ id, name: file.name, documentType, period, storageKey, mimeType: file.type || "application/octet-stream", sizeBytes: file.size, sha256, status: "queued", uploadedBy: actor }),
       db.insert(auditEvents).values({ actor, action: "DOCUMENT_UPLOADED", entityType: "document", entityId: id, detail: JSON.stringify({ name: file.name, documentType, period, sha256 }) }),
