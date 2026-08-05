@@ -6,10 +6,11 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
+    "data:build": "node scripts/build-dataset.mjs",
+    "dev": "npm run data:build && vinext dev",
+    "build": "npm run data:build && vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/reconciliation-engine.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/reconciliation-engine.test.mjs tests/source-parsers.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

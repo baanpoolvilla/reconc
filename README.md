@@ -1,100 +1,79 @@
-# vinext-starter
+# ClearClose — ระบบกระทบยอดบัญชี
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+กระทบยอด **รายการรับเงิน ↔ รายการเดินบัญชีธนาคาร** จากเอกสารจริงในโฟลเดอร์ `data/`
+ระบบไม่มีข้อมูลตัวอย่างหรือข้อมูลที่พิมพ์ไว้ล่วงหน้าเลย ทุกตัวเลขที่แสดงบนหน้าจอถูกอ่านมาจากไฟล์ต้นฉบับ
 
-## Prerequisites
+## กฎการจับคู่ (ruleset v2.0.0)
 
-- Node.js `>=22.13.0`
+การจับคู่จะสำเร็จก็ต่อเมื่อ **เงื่อนไขทั้งสองข้อเป็นจริงพร้อมกัน**
 
-## Quick Start
+| | กฎ | รายละเอียด |
+|---|---|---|
+| R01 | วันที่สร้างคำจอง = วันที่เงินเข้า Statement | ใช้ `Reservation Creation Time` จากบัญชีแยกประเภท เทียบเป็น**วันปฏิทินเดียวกัน** ไม่มี date window |
+| R02 | ยอดต้องตรงกันพอดี | ผลต่างต้องเป็น `฿0.00` ไม่มี tolerance |
 
-```bash
-npm install
-npm run dev
-npm run build
+เมื่อทั้งสองข้อผ่าน ระบบจะจับคู่ตามลำดับ
+
+| | รูปแบบ | score |
+|---|---|---|
+| R03 | `1:1` หนึ่งรายการรับเงิน = หนึ่งยอดเงินเข้า | 100 |
+| R04 | `N:1` ผลรวมหลายรายการรับเงินในวันเดียวกัน = หนึ่งยอดเงินเข้า | 95 |
+| R05 | `1:N` หนึ่งรายการรับเงิน = ผลรวมหลายยอดเงินเข้าในวันเดียวกัน | 92 |
+| R06 | ที่เหลือทั้งหมดเป็นข้อยกเว้น | — |
+
+ระบบ **ไม่ปรับยอด ไม่ขยายช่วงวันที่ และไม่แก้ไขข้อมูลต้นฉบับ** ให้อัตโนมัติ
+รายการที่จับคู่ไม่ได้จะถูกจัดเข้าคิวตรวจสอบพร้อมเหตุผล:
+
+- `MISSING_BOOKING` — เลขที่จองไม่มีในบัญชีแยกประเภท จึงไม่มีวันที่สร้างคำจองให้เทียบ
+- `DATE_RULE_UNMET` — ไม่มีเงินเข้าบัญชีนั้นเลยในวันที่สร้างคำจอง (ไม่ผ่าน R01)
+- `AMOUNT_MISMATCH` — มีเงินเข้าวันเดียวกัน แต่ไม่มียอดหรือชุดยอดใดรวมแล้วเท่ากันพอดี (ไม่ผ่าน R02)
+- `UNMATCHED_BANK_CREDIT` — เงินเข้าที่ยังไม่มีรายการรับเงินผ่านกฎทั้งสองข้อมารองรับ
+- `REFUND_LINE` — รายการคืนเงิน ต้องกระทบกับยอดถอน ไม่ใช่ยอดฝาก
+
+ช่องทางรับเงินที่ไม่มี Statement ในโฟลเดอร์ `data/` (เช่น `Kbank-Posh`, OTA collect, เงินสด)
+จะถูกรายงานแยกเป็น **นอกขอบเขต** ไม่นับเป็นทั้งจับคู่สำเร็จและข้อยกเว้น
+
+## ข้อมูลต้นทาง
+
+วางไฟล์ทั้งสี่ไว้ใน `data/` แล้วรัน `npm run data:build`
+
+| ไฟล์ | เนื้อหา |
+|---|---|
+| `บันทึกบัญชีแยกประเภท*.xlsx` | Ledger — เลขที่จอง, **วันที่สร้างคำจอง**, ยอดจอง, ช่องทางชำระ |
+| `รายงานการรับเงิน*.xlsx` | Collection report — วันที่, ช่องทาง, ยอด, เลขที่จอง |
+| `885*.pdf` | Statement KBank บัญชี `199-1-33588-5` (ช่องทาง `KbankGL885`) |
+| `987*.pdf` | Statement KBank บัญชี `025-3-66398-7` (ช่องทาง `KbankGL987`) |
+
+สคริปต์อ่านไฟล์เอง ไม่ต้องแปลงเป็น CSV ก่อน:
+
+- `scripts/lib/zip.mjs` + `scripts/lib/xlsx.mjs` — อ่าน `.xlsx` โดยตรง
+- `scripts/lib/pdf.mjs` + `scripts/lib/statement.mjs` — ถอดข้อความพร้อมตำแหน่งจาก Statement PDF
+  แล้วประกอบเป็นรายการเดินบัญชี พร้อมตรวจ control total (`ยอดยกมา + ฝาก − ถอน = ยอดยกไป`)
+
+ผลลัพธ์คือ `lib/dataset.generated.json` ซึ่ง UI และ `/api/dataset` ใช้ร่วมกัน
+
+## คำสั่ง
+
+| คำสั่ง | ผล |
+|---|---|
+| `npm run data:build` | อ่าน `data/` แล้วสร้าง `lib/dataset.generated.json` ใหม่ |
+| `npm run dev` | สร้างชุดข้อมูลแล้วเปิด dev server |
+| `npm run build` | สร้างชุดข้อมูลแล้ว build |
+| `npm test` | build แล้วรัน test ทั้งหมด (parser, engine, UI) |
+
+## โครงสร้าง
+
+```
+data/                        ไฟล์ต้นฉบับ (แหล่งข้อมูลเดียวของระบบ)
+scripts/build-dataset.mjs    pipeline: data/ → lib/dataset.generated.json
+scripts/lib/                 ตัวอ่าน zip / xlsx / pdf / statement
+lib/reconciliation.mjs       engine การจับคู่ (ruleset v2.0.0)
+lib/dataset.ts               typed accessor + ตัวช่วยจัดรูปแบบเงินและวันที่
+app/page.tsx                 UI ทั้งหมด อ่านจาก dataset อย่างเดียว
+app/api/dataset/route.ts     ส่งชุดข้อมูลออกเป็น JSON (`?section=` เพื่อตัดขนาด)
+tests/                       parser · engine · UI
 ```
 
-This starter does not use `wrangler.jsonc`.
+## หน้าจอ
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+แต่ละหน้าเปิดตรงได้ด้วย hash — `#overview` `#matching` `#exceptions` `#bookings` `#receipts` `#statements` `#rules`
