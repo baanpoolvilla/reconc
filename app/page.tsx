@@ -14,6 +14,10 @@ type StatementMatch = {
   matchType: "1:1" | "N:1" | "1:N" | "Exception"; score: number; dateDelta: string; status: string; tone: Tone; page: string;
   bookings: { reservation: string; guest: string; stay: string; receiptId: string; receiptDate: string; amount: string; allocated: string; method: string; sourceRow: string }[];
 };
+type BookingReconciliation = {
+  reservation: string; bookedAt: string; guest: string; property: string; stay: string; total: string; paymentCount: number; paidTotal: string;
+  status: string; tone: Tone; payments: { no: number; paidAt: string; receipt: string; amount: string; statementDate: string; account: string; statementAmount: string; bankRef: string; matchGroup: string; result: string; tone: Tone }[];
+};
 
 const monthOptions = [
   { value: "2026-08", label: "สิงหาคม 2569" }, { value: "2026-07", label: "กรกฎาคม 2569" }, { value: "2026-06", label: "มิถุนายน 2569" },
@@ -89,6 +93,26 @@ const statementMatches: StatementMatch[] = [
     { reservation: "10763244081296770511", guest: "Ms. Grace Lee", stay: "25–28 ก.ค. 2569", receiptId: "OTA-REC-302", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 282" },
     { reservation: "10977136480127883402", guest: "Mr. Ken Ito", stay: "26–29 ก.ค. 2569", receiptId: "OTA-REC-303", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 283" },
     { reservation: "10344091766280471509", guest: "Ms. Mina Park", stay: "27–30 ก.ค. 2569", receiptId: "OTA-REC-304", receiptDate: "28 ก.ค. 2569", amount: "฿12,600.00", allocated: "฿12,600.00", method: "Trip Collect", sourceRow: "Collection row 284" },
+  ] },
+];
+
+const bookingReconciliations: BookingReconciliation[] = [
+  { reservation: "10158230476834210083", bookedAt: "12 ก.ค. 2569 · 10:24", guest: "คุณนภัสสร อินทร์แก้ว", property: "The Palm Pool Villa A", stay: "25–26 ก.ค. 2569", total: "฿18,900.00", paymentCount: 3, paidTotal: "฿18,900.00", status: "ชำระครบ · กระทบยอดแล้ว", tone: "green", payments: [
+    { no: 1, paidAt: "24 ก.ค. 2569", receipt: "REC-0725-0188", amount: "฿500.00", statementDate: "25 ก.ค. 2569 · 14:18", account: "KBank •••885", statementAmount: "฿6,450.00", bankRef: "KB885-250726-1842", matchGroup: "GRP-885-0725-01 · N:1", result: "รวมกับงวด 2 ตรงยอด Statement", tone: "green" },
+    { no: 2, paidAt: "24 ก.ค. 2569", receipt: "REC-0725-0189", amount: "฿5,950.00", statementDate: "25 ก.ค. 2569 · 14:18", account: "KBank •••885", statementAmount: "฿6,450.00", bankRef: "KB885-250726-1842", matchGroup: "GRP-885-0725-01 · N:1", result: "รวมกับงวด 1 ตรงยอด Statement", tone: "green" },
+    { no: 3, paidAt: "25 ก.ค. 2569", receipt: "REC-0725-0196", amount: "฿12,450.00", statementDate: "26 ก.ค. 2569 · 09:06", account: "KBank •••885", statementAmount: "฿12,450.00", bankRef: "KB885-260726-0906", matchGroup: "GRP-885-0726-07 · 1:1", result: "ยอดตรงกัน", tone: "green" },
+  ] },
+  { reservation: "10862708254763192824", bookedAt: "18 ก.ค. 2569 · 16:40", guest: "คุณอรทัย ศรีสุข", property: "Moonlight Pool Villa 2", stay: "26–28 ก.ค. 2569", total: "฿12,000.00", paymentCount: 3, paidTotal: "฿4,000.00", status: "ยอดต่าง · รอตรวจสอบ", tone: "red", payments: [
+    { no: 1, paidAt: "26 ก.ค. 2569", receipt: "REC-0726-0204", amount: "฿4,000.00", statementDate: "26 ก.ค. 2569 · 11:06", account: "KBank •••885", statementAmount: "฿380.00", bankRef: "KB885-260726-1106", matchGroup: "GRP-885-0726-02 · Exception", result: "ยอดต่าง ฿3,620.00", tone: "red" },
+    { no: 2, paidAt: "ยังไม่ชำระ", receipt: "—", amount: "฿4,000.00", statementDate: "—", account: "—", statementAmount: "—", bankRef: "—", matchGroup: "ยังไม่มีรายการจับคู่", result: "รอชำระ", tone: "amber" },
+    { no: 3, paidAt: "ยังไม่ชำระ", receipt: "—", amount: "฿4,000.00", statementDate: "—", account: "—", statementAmount: "—", bankRef: "—", matchGroup: "ยังไม่มีรายการจับคู่", result: "รอชำระ", tone: "amber" },
+  ] },
+  { reservation: "10491182076341028570", bookedAt: "21 ก.ค. 2569 · 09:15", guest: "คุณสมชาย จิตดี", property: "Baan Ruen Rom Pool Villa", stay: "27–28 ก.ค. 2569", total: "฿11,000.00", paymentCount: 2, paidTotal: "฿11,000.00", status: "ชำระครบ · กระทบยอดแล้ว", tone: "green", payments: [
+    { no: 1, paidAt: "27 ก.ค. 2569", receipt: "REC-0727-0216", amount: "฿5,500.00", statementDate: "27 ก.ค. 2569 · 16:12", account: "KBank •••987", statementAmount: "฿11,000.00", bankRef: "KB987-270726-1612", matchGroup: "GRP-987-0727-04 · N:1", result: "รวมกับงวด 2 ตรงยอด Statement", tone: "green" },
+    { no: 2, paidAt: "27 ก.ค. 2569", receipt: "REC-0727-0217", amount: "฿5,500.00", statementDate: "27 ก.ค. 2569 · 16:12", account: "KBank •••987", statementAmount: "฿11,000.00", bankRef: "KB987-270726-1612", matchGroup: "GRP-987-0727-04 · N:1", result: "รวมกับงวด 1 ตรงยอด Statement", tone: "green" },
+  ] },
+  { reservation: "10672049581300645218", bookedAt: "22 ก.ค. 2569 · 14:08", guest: "คุณปาริชาติ แสงทอง", property: "Seaside Pool Villa 5", stay: "28–29 ก.ค. 2569", total: "฿8,900.00", paymentCount: 1, paidTotal: "฿8,900.00", status: "ชำระครบ · กระทบยอดแล้ว", tone: "blue", payments: [
+    { no: 1, paidAt: "28 ก.ค. 2569", receipt: "REC-0728-0231", amount: "฿8,900.00", statementDate: "28 ก.ค. 2569 · 10:29–10:31", account: "KBank •••987", statementAmount: "฿5,900 + ฿3,000", bankRef: "KB987-280726-1029 / 1031", matchGroup: "GRP-987-0728-05 · 1:N", result: "Receipt เดียวตรงกับ 2 ยอด Statement", tone: "blue" },
   ] },
 ];
 
@@ -225,9 +249,24 @@ export default function Home() {
 }
 
 function Overview({ onGo, onUpload }: { onGo: (view: ViewId) => void; onUpload: () => void }) {
+  const [selectedBooking, setSelectedBooking] = useState<BookingReconciliation>(bookingReconciliations[0]);
   return <>
     <PageHeading view="overview" action={<div className="readiness"><span className="readiness-ring"><b>87</b><small>%</small></span><span><small>ความพร้อมปิดบัญชี</small><b>ใกล้พร้อมตรวจทาน</b><p>เหลือ 49 รายการที่ต้องจัดการ</p></span></div>} />
     <section className="metrics-grid"><Metric label="ยอดรับสุทธิ" value="฿2,274,426.29" detail="จากรายงานรับเงิน 387 รายการ" tone="blue" badge="↗ 12.4%" /><Metric label="จับคู่สำเร็จ" value="90.7%" detail="477 จาก 526 กลุ่มรายการ" tone="green" badge="เป้าหมาย 95%" /><Metric label="รอตรวจสอบ" value="49 กลุ่ม" detail="ยอดผลต่างรวม ฿9,120.00" tone="amber" badge="สูง 1" /><Metric label="Control checks" value="3/3 ผ่าน" detail="Ledger · Statement 885 · 987" tone="green" badge="สมดุล" /></section>
+    <section className="panel booking-recon-panel">
+      <PanelTitle kicker="Booking payment reconciliation" title="รายละเอียดการกระทบยอดรายจอง" action={<button className="text-button" onClick={() => onGo("statements")}>ดู Statement ทั้งหมด →</button>} />
+      <div className="booking-recon-intro"><span>↔</span><p><b>ดูได้ทันทีว่าแต่ละการจองแบ่งจ่ายกี่ครั้ง และแต่ละงวดตรงกับยอดใดใน Statement</b><small>คลิกแถวการจองเพื่อเปิดรายละเอียดทุกงวดชำระ พร้อม Bank reference และรูปแบบการจับคู่ 1:1, N:1 หรือ 1:N</small></p></div>
+      <div className="responsive-table"><table className="booking-recon-table"><thead><tr><th>วันที่จอง / เลขที่จอง</th><th>บ้านพัก / ผู้จอง</th><th>วันเข้าพัก</th><th>ยอดจองรวม</th><th>แบ่งจ่าย</th><th>ชำระแล้ว</th><th>สถานะกระทบยอด</th><th /></tr></thead><tbody>{bookingReconciliations.map((booking) => <tr key={booking.reservation} className={selectedBooking.reservation === booking.reservation ? "selected" : ""} onClick={() => setSelectedBooking(booking)}><td><b>{booking.bookedAt}</b><small className="block mono">{booking.reservation}</small></td><td><b>{booking.property}</b><small className="block">{booking.guest}</small></td><td>{booking.stay}</td><td><strong>{booking.total}</strong></td><td><span className="payment-count"><b>{booking.paymentCount}</b> ครั้ง</span></td><td><b>{booking.paidTotal}</b></td><td><Pill tone={booking.tone}>{booking.status}</Pill></td><td><button className="row-button" aria-label={`เปิดรายละเอียดการจอง ${booking.reservation}`}>›</button></td></tr>)}</tbody></table></div>
+      <div className="booking-payment-detail">
+        <div className="booking-payment-head"><div><small>รายละเอียดการจองที่เลือก</small><h3>{selectedBooking.property}</h3><p>{selectedBooking.guest} · <span className="mono">{selectedBooking.reservation}</span></p></div><div><span><small>วันที่จอง</small><b>{selectedBooking.bookedAt}</b></span><span><small>ยอดรวม</small><b>{selectedBooking.total}</b></span><span><small>แบ่งจ่าย</small><b>{selectedBooking.paymentCount} ครั้ง</b></span><Pill tone={selectedBooking.tone}>{selectedBooking.status}</Pill></div></div>
+        <div className="payment-installments">{selectedBooking.payments.map((payment) => <article key={`${selectedBooking.reservation}-${payment.no}`} className={payment.tone === "red" ? "danger" : ""}>
+          <div className="installment-label"><span>{payment.no}</span><p><small>งวดที่ {payment.no} จาก {selectedBooking.paymentCount}</small><b>{payment.amount}</b><em>{payment.paidAt}</em></p><Pill tone={payment.tone}>{payment.result}</Pill></div>
+          <div className="installment-flow"><div><small>รายการรับเงิน</small><b>{payment.amount}</b><span className="mono">{payment.receipt}</span></div><i>→</i><div className="match-rule"><small>กลุ่มจับคู่</small><b>{payment.matchGroup}</b><span>{payment.result}</span></div><i>→</i><div><small>ยอดใน Statement</small><b>{payment.statementAmount}</b><span>{payment.account} · {payment.statementDate}</span></div></div>
+          <div className="bank-reference"><span>Bank reference</span><code>{payment.bankRef}</code><button onClick={() => onGo("statements")}>เปิดรายการ Statement →</button></div>
+        </article>)}</div>
+        <div className="booking-control-total"><span><small>ยอดจองรวม</small><b>{selectedBooking.total}</b></span><i>=</i><span><small>ยอดรับเงินสะสม</small><b>{selectedBooking.paidTotal}</b></span><span className={`control-result ${selectedBooking.tone}`}><b>{selectedBooking.tone === "red" ? "! ยังปิดยอดไม่ได้" : "✓ ยอดชำระครบ"}</b><small>{selectedBooking.status}</small></span></div>
+      </div>
+    </section>
     <section className="phase-strip">{[
       ["01", "Ingestion & Ledger", "รับไฟล์และจับคู่ Receipt ↔ Ledger", "เสร็จแล้ว", "green"], ["02", "Bank 885 / 987", "จับคู่ 1:1 และ grouped match", "98.1%", "blue"],
       ["03", "Invoice", "ออกและส่งเอกสารจากยอดที่ยืนยัน", "3 รอดำเนินการ", "amber"], ["04", "OTA Settlement", "กระทบยอด Booking / Trip / Airbnb", "95.7%", "green"],

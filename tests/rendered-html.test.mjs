@@ -17,6 +17,10 @@ test("builds the complete ClearClose workspace", async () => {
   assert.match(page, /ยอดใน Statement/);
   assert.match(page, /หลักฐานการจับคู่แบบตรวจสอบย้อนกลับได้/);
   assert.match(page, /Reservation/);
+  assert.match(page, /รายละเอียดการกระทบยอดรายจอง/);
+  assert.match(page, /แบ่งจ่ายกี่ครั้ง/);
+  assert.match(page, /The Palm Pool Villa A/);
+  assert.match(page, /Bank reference/);
   assert.doesNotMatch(page, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
   assert.ok(serverBundle.length > 1000);
 });
