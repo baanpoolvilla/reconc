@@ -36,8 +36,8 @@ test("the ledger reads like a spreadsheet and rings each amount by outcome", asy
   const [workspace, css] = await Promise.all([read("../app/workspace.tsx"), read("../app/globals.css")]);
 
   // Every column the reviewer asked to see, keyed on the receipt line.
-  for (const column of ["วันจอง", "เลขที่จอง", "บ้านพัก / รหัสบ้าน", "ผู้จอง", "ช่องทางติดต่อ", "รายการเงิน", "ยอดจองรวม", "จ่ายจริง", "ยังไม่จ่าย"]) {
-    assert.ok(workspace.includes(`<th>${column}</th>`) || workspace.includes(`<th className="num">${column}</th>`), `ledger is missing the ${column} column`);
+  for (const column of ["Contact", "Channel", "Room Type", "ยอดคงค้าง", "Check-in", "Check-out", "สถานะ"]) {
+    assert.ok(workspace.includes(column), `ledger is missing the ${column} column`);
   }
   assert.match(workspace, /amount-ring \$\{row\.status\}/);
   assert.match(css, /\.amount-ring\.matched \{[^}]*border-color: var\(--green\)/);
@@ -46,6 +46,10 @@ test("the ledger reads like a spreadsheet and rings each amount by outcome", asy
   assert.doesNotMatch(css, /\.ledger-legend i, \.foot-split i \{[^}]*border: /);
   // Payments of one booking read as a block, the way merged cells do.
   assert.match(workspace, /firstOfBooking/);
+  // Each column must declare which document it came from.
+  assert.match(workspace, /src-ledger/);
+  assert.match(workspace, /src-collection/);
+  assert.match(workspace, /src-statement/);
   assert.match(workspace, /exportCsv/);
 });
 

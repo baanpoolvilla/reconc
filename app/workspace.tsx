@@ -423,17 +423,29 @@ function Ledger() {
   }), { receipt: 0, matched: 0, unmatched: 0 });
 
   const exportCsv = () => {
-    const header = ["วันจอง", "เวลาจอง", "เลขที่จอง", "บ้านพัก", "รหัสบ้าน", "ผู้จอง", "ช่องทางติดต่อ", "วันรับเงิน", "ช่องทางรับเงิน", "ยอดรับเงิน", "ยอดจองรวม", "จ่ายแล้ว", "คงค้าง", "สถานะกระทบยอด", "อ้างอิง"];
+    // Same columns as the screen, in the same order, grouped by source document.
+    const header = [
+      "Reservation Creation Time", "PMS Reservation No.", "Contact", "Mobile", "Channel", "Room Type", "Total Amount", "Payment", "Payment Method", "ยอดคงค้าง",
+      "Date", "Check-in Date", "Check-out Date", "Amount", "ช่องทางรับเงิน",
+      "Statement Date", "Statement Time", "Statement Amount",
+      "สถานะกระทบยอด", "อ้างอิง",
+    ];
     const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const money = (satang: number) => (satang / 100).toFixed(2);
-    const lines = visible.map((row) => [
-      row.booking?.createdDate ?? "", row.booking?.createdAt.slice(11, 16) ?? "", row.receipt.reservationNo,
-      row.receipt.group, row.receipt.roomType, row.receipt.guest, row.receipt.channel,
-      row.receipt.date, row.receipt.method, money(row.receipt.amountSatang),
-      money(row.booking?.totalSatang ?? 0), money(row.booking?.paidSatang ?? 0), money(row.booking?.balanceDueSatang ?? 0),
-      row.status === "matched" ? "ตรง" : row.status === "exception" ? "ไม่ตรง" : "นอกขอบเขต",
-      row.group?.id ?? row.exception?.id ?? "",
-    ].map(escape).join(","));
+    const lines = visible.map((row) => {
+      const line = row.group?.lines[0];
+      return [
+        row.booking?.createdAt.replace("T", " ") ?? "", row.receipt.reservationNo,
+        row.booking?.guest || row.receipt.guest, row.booking?.mobile ?? "", row.receipt.channel,
+        row.booking?.roomType || row.receipt.roomType, money(row.booking?.totalSatang ?? 0),
+        money(row.booking?.paidSatang ?? 0), row.booking?.payments.map((payment) => payment.method).join(" / ") ?? "",
+        money(row.booking?.balanceDueSatang ?? 0),
+        row.receipt.date, row.receipt.checkIn, row.receipt.checkOut, money(row.receipt.amountSatang), row.receipt.method,
+        line?.date ?? "", line?.time ?? "", line ? money(line.amountSatang) : "",
+        row.status === "matched" ? "ตรง" : row.status === "exception" ? "ไม่ตรง" : "นอกขอบเขต",
+        row.group?.id ?? row.exception?.id ?? "",
+      ].map(escape).join(",");
+    });
 
     // BOM so Excel opens Thai text in UTF-8 rather than mangling it.
     const blob = new Blob([`﻿${[header.map(escape).join(","), ...lines].join("\r\n")}`], { type: "text/csv;charset=utf-8;" });
@@ -486,53 +498,76 @@ function Ledger() {
 
         <div className="responsive-table scroll-table">
           <table className="ledger-table">
+            {/* Two header rows: which document a column comes from, then the
+                field name as that document spells it. */}
             <thead>
-              <tr>
-                <th>วันจอง</th>
-                <th>เลขที่จอง</th>
-                <th>บ้านพัก / รหัสบ้าน</th>
-                <th>ผู้จอง</th>
-                <th>ช่องทางติดต่อ</th>
-                <th>วันรับเงิน</th>
-                <th>ช่องทางรับเงิน</th>
-                <th className="num">รายการเงิน</th>
-                <th className="num">ยอดจองรวม</th>
-                <th className="num">จ่ายจริง</th>
-                <th className="num">ยังไม่จ่าย</th>
-                <th>กระทบยอด</th>
+              <tr className="source-header">
+                <th colSpan={8} className="src-ledger">บันทึกบัญชีแยกประเภท</th>
+                <th colSpan={4} className="src-collection">รายงานการรับเงิน</th>
+                <th colSpan={1} className="src-statement">สเตจเม้น</th>
+                <th colSpan={1} className="src-result">ผลกระทบยอด</th>
+              </tr>
+              <tr className="field-header">
+                <th>Reservation<br />Creation Time</th>
+                <th>PMS<br />Reservation No.</th>
+                <th>Contact</th>
+                <th>Channel</th>
+                <th>Room Type</th>
+                <th className="num">Total Amount</th>
+                <th className="num">Payment</th>
+                <th className="num">ยอดคงค้าง</th>
+                <th>Date</th>
+                <th>Check-in<br />Date</th>
+                <th>Check-out<br />Date</th>
+                <th className="num">Amount</th>
+                <th>วันที่ / เวลา</th>
+                <th>สถานะ</th>
               </tr>
             </thead>
             <tbody>
-              {visible.slice(0, 300).map((row) => (
-                <tr key={row.receipt.id} className={`${row.firstOfBooking ? "group-start" : "group-cont"} ${row.status}`}>
-                  <td>{row.firstOfBooking ? <><b>{row.booking ? thaiDate(row.booking.createdDate) : "—"}</b><small className="block">{row.booking ? `${row.booking.createdAt.slice(11, 16)} น.` : "ไม่พบคำจอง"}</small></> : <span className="cont-mark">〃</span>}</td>
-                  <td className="mono">{row.firstOfBooking ? row.receipt.reservationNo : <span className="cont-mark">〃</span>}</td>
-                  <td>{row.firstOfBooking ? <><b>{row.receipt.group || "—"}</b><small className="block">{row.receipt.roomType}</small></> : <span className="cont-mark">〃</span>}</td>
-                  <td>{row.firstOfBooking ? (row.receipt.guest || row.booking?.guest || "—") : <span className="cont-mark">〃</span>}</td>
-                  <td>{row.firstOfBooking ? <span className={`channel-chip ${channelClass(row.receipt.channel)}`}>{row.receipt.channel || "ไม่ระบุ"}</span> : <span className="cont-mark">〃</span>}</td>
-                  <td>{thaiDate(row.receipt.date)}</td>
-                  <td>{row.receipt.method}{row.rowsInBooking > 1 && row.firstOfBooking && <small className="block">แบ่งจ่าย {row.rowsInBooking} งวด</small>}</td>
-                  <td className="num"><span className={`amount-ring ${row.status}`}>{baht(row.receipt.amountSatang)}</span></td>
-                  <td className="num">{row.firstOfBooking ? baht(row.booking?.totalSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
-                  <td className="num">{row.firstOfBooking ? baht(row.booking?.paidSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
-                  <td className={`num ${row.booking?.balanceDueSatang ? "negative" : ""}`}>{row.firstOfBooking ? baht(row.booking?.balanceDueSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
-                  <td>
-                    {row.status === "matched" && <><Pill tone="green">{row.group?.type}</Pill><small className="block mono">{row.group?.id}</small></>}
-                    {row.status === "exception" && <><Pill tone="red">ไม่ตรง</Pill><small className="block mono">{row.exception?.reason}</small></>}
-                    {row.status === "outofscope" && <Pill>นอกขอบเขต</Pill>}
-                  </td>
-                </tr>
-              ))}
+              {visible.slice(0, 300).map((row) => {
+                const line = row.group?.lines[0];
+                // Booking columns print once per booking, like a merged cell.
+                const own = row.firstOfBooking;
+                return (
+                  <tr key={row.receipt.id} className={`${own ? "group-start" : "group-cont"} ${row.status}`}>
+                    <td className="col-ledger">{own && (row.booking
+                      ? <><b>{thaiDate(row.booking.createdDate)}</b><small className="block">{row.booking.createdAt.slice(11, 16)} น.</small></>
+                      : <span className="missing-cell">ไม่พบคำจอง</span>)}</td>
+                    <td className="col-ledger mono">{own && row.receipt.reservationNo}</td>
+                    <td className="col-ledger">{own && <><b>{row.booking?.guest || row.receipt.guest || "—"}</b>{row.booking?.mobile && <small className="block">{row.booking.mobile}</small>}</>}</td>
+                    <td className="col-ledger">{own && <span className={`channel-chip ${channelClass(row.receipt.channel)}`}>{row.receipt.channel || "ไม่ระบุ"}</span>}</td>
+                    <td className="col-ledger">{own && <><b>{row.booking?.roomType || row.receipt.roomType || "—"}</b><small className="block">{row.receipt.group}</small></>}</td>
+                    <td className="col-ledger num">{own && <strong>{baht(row.booking?.totalSatang ?? 0)}</strong>}</td>
+                    <td className="col-ledger num">{own && <>{baht(row.booking?.paidSatang ?? 0)}{row.booking?.payments.length ? <small className="block">{row.booking.payments.map((payment) => payment.method).join(" · ")}</small> : null}</>}</td>
+                    <td className="col-ledger num">{own && <span className={row.booking?.balanceDueSatang ? "due" : ""}>{baht(row.booking?.balanceDueSatang ?? 0)}</span>}</td>
+
+                    <td className="col-collection">{thaiDate(row.receipt.date)}<small className="block">{row.receipt.method}</small></td>
+                    <td className="col-collection">{thaiDate(row.receipt.checkIn)}</td>
+                    <td className="col-collection">{thaiDate(row.receipt.checkOut)}</td>
+                    <td className="col-collection num"><span className={`amount-ring ${row.status}`}>{baht(row.receipt.amountSatang)}</span></td>
+
+                    <td className="col-statement">{line
+                      ? <><b>{thaiDate(line.date)}</b><small className="block">{line.time} น. · {baht(line.amountSatang)}</small>{row.group && row.group.lines.length > 1 && <small className="block">+ อีก {row.group.lines.length - 1} รายการ</small>}</>
+                      : <span className="missing-cell">{row.status === "exception" ? "ไม่มีที่ตรง" : "—"}</span>}</td>
+
+                    <td className="col-result">
+                      {row.status === "matched" && <><Pill tone="green">{row.group?.type}</Pill><small className="block mono">{row.group?.id}</small></>}
+                      {row.status === "exception" && <><Pill tone="red">ไม่ตรง</Pill><small className="block mono">{row.exception?.reason}</small></>}
+                      {row.status === "outofscope" && <Pill>นอกขอบเขต</Pill>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={7}>รวม {visible.length.toLocaleString("en-US")} รายการที่แสดง</td>
+                <td colSpan={11}>รวม {visible.length.toLocaleString("en-US")} รายการที่แสดง</td>
                 <td className="num"><strong>{baht(totals.receipt)}</strong></td>
-                <td className="num" colSpan={3}>
+                <td colSpan={2}>
                   <span className="foot-split"><i className="ring-green" />ตรง {baht(totals.matched)}</span>
                   <span className="foot-split"><i className="ring-red" />ไม่ตรง {baht(totals.unmatched)}</span>
                 </td>
-                <td />
               </tr>
             </tfoot>
           </table>

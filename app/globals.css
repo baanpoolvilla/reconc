@@ -187,18 +187,35 @@ footer { display: flex; align-items: center; gap: 18px; padding: 22px 5px 0; col
 .ring-red { border-color: var(--red); background: #fbecea; }
 .ring-grey { border-color: #b6bcb6; background: #f2f2ee; }
 
-.ledger-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; }
-.ledger-table th { position: sticky; top: 0; z-index: 2; padding: 10px 11px; border-bottom: 1px solid var(--line); background: #f5f4ee; color: var(--muted); font-size: 9px; font-weight: 700; text-align: left; white-space: nowrap; }
+.ledger-table { width: 100%; min-width: 1500px; border-collapse: separate; border-spacing: 0; font-size: 11px; }
 .ledger-table th.num, .ledger-table td.num { text-align: right; }
 .ledger-table td { padding: 9px 11px; border-bottom: 1px solid #f0f0ea; vertical-align: top; }
 .ledger-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ledger-table small.block { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.ledger-table small.block { margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 400; }
 
-/* A booking's payments read as one block, the way merged cells do in a sheet. */
-.ledger-table tr.group-start td { border-top: 1px solid #dcded7; }
-.ledger-table tr.group-cont td { background: #fcfcfa; }
-.ledger-table tr:hover td { background: #f7f9f8; }
-.cont-mark { color: #c4c9c3; }
+/* Row one names the source document, row two names the field as that document
+   spells it — so a column is never ambiguous about where its number came from. */
+.ledger-table thead th { position: sticky; z-index: 3; background: #f5f4ee; text-align: left; white-space: nowrap; }
+.ledger-table tr.source-header th { top: 0; height: 30px; padding: 8px 11px; border-bottom: 1px solid #dcded7; font-size: 10px; font-weight: 800; letter-spacing: .3px; }
+.ledger-table tr.field-header th { top: 30px; padding: 8px 11px 9px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; font-weight: 700; line-height: 1.35; }
+.ledger-table th.src-ledger { background: #eaf1ef; color: #1d4d3f; box-shadow: inset 3px 0 0 var(--forest); }
+.ledger-table th.src-collection { background: #e9eefb; color: #23408f; box-shadow: inset 3px 0 0 var(--blue); }
+.ledger-table th.src-statement { background: #f6eede; color: #7a5410; box-shadow: inset 3px 0 0 var(--amber); }
+.ledger-table th.src-result { background: #efeee8; color: var(--muted); box-shadow: inset 3px 0 0 #9aa39c; }
+
+/* The same tint, much lighter, keeps each block identifiable while scanning. */
+.ledger-table td.col-collection { background: #fafbfe; }
+.ledger-table td.col-statement { background: #fefcf7; }
+.ledger-table td.col-ledger:first-child { box-shadow: inset 3px 0 0 #dfe7e3; }
+.ledger-table tr.group-start td.col-ledger:first-child { box-shadow: inset 3px 0 0 var(--forest); }
+
+/* A booking's instalments read as one block: its columns print once, and a
+   heavier rule marks where the next booking begins. */
+.ledger-table tr.group-start td { border-top: 2px solid #d3d8d3; }
+.ledger-table tr.group-cont td.col-ledger { background: #fcfcfa; }
+.ledger-table tbody tr:hover td { background: #f5f8f7; }
+.missing-cell { color: var(--red); font-size: 10px; }
+.due { color: var(--red); font-weight: 750; }
 
 /* The point of the whole screen: is this amount reconciled or not. */
 .amount-ring { display: inline-block; padding: 3px 9px; border: 2px solid transparent; border-radius: 7px; font-weight: 700; font-variant-numeric: tabular-nums; }
