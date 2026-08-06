@@ -22,6 +22,13 @@ type Tone = "green" | "blue" | "amber" | "red" | "slate";
 const { meta, bookings, receipts, statements, reconciliation } = dataset;
 const { accounts, groups, exceptions, outOfScope, summary } = reconciliation;
 
+// The build emits an empty dataset when data/ holds no source documents, so the
+// app deploys and runs before any statement has been loaded.
+const hasData = meta.sources.length > 0;
+const orgName = statements[0]?.accountName?.trim() || "ยังไม่ได้ระบุกิจการ";
+const orgInitials = hasData ? orgName.replace(/^บจก\.\s*|^บริษัท\s*/, "").slice(0, 2) : "—";
+const periodLabel = meta.period ? thaiMonthLabel(meta.period) : "ยังไม่มีรอบบัญชี";
+
 const reasonTone: Record<string, Tone> = {
   MISSING_BOOKING: "red",
   DATE_RULE_UNMET: "amber",
@@ -163,8 +170,8 @@ export default function Home() {
           <span><b>ClearClose</b><small>ACCOUNT RECONCILIATION</small></span>
         </button>
         <div className="org-switcher static">
-          <span>กล</span>
-          <span><b>บจก. กู๊ดลัค แลนด์</b><small>{thaiMonthLabel(meta.period)}</small></span>
+          <span>{orgInitials}</span>
+          <span><b>{orgName}</b><small>{periodLabel}</small></span>
         </div>
         <nav aria-label="เมนูหลัก">
           {navGroups.map((group) => (
@@ -179,7 +186,10 @@ export default function Home() {
           ))}
         </nav>
         <div className="sidebar-status">
-          <p><span className={summary.controlBalanced ? "" : "warn"} /> {summary.controlBalanced ? "Control total ตรงทุกบัญชี" : "Control total ไม่ตรง"}</p>
+          <p>
+            <span className={hasData && summary.controlBalanced ? "" : "warn"} />
+            {!hasData ? "ยังไม่มีเอกสารต้นทาง" : summary.controlBalanced ? "Control total ตรงทุกบัญชี" : "Control total ไม่ตรง"}
+          </p>
           <small className="sidebar-note">อ่านจาก data/ · {meta.sources.length} ไฟล์</small>
         </div>
       </aside>
@@ -187,7 +197,7 @@ export default function Home() {
       <main>
         <header className="topbar">
           <div className="topbar-brand"><span className="brand-mark"><i /><i /><i /></span><b>ClearClose</b></div>
-          <div className="period"><small>รอบบัญชี</small><b>{thaiMonthLabel(meta.period)}</b></div>
+          <div className="period"><small>รอบบัญชี</small><b>{periodLabel}</b></div>
           <div className="top-actions">
             <span className="live-state"><i /> DATA/ SOURCE FILES</span>
             <span className="ruleset-chip">ruleset v{reconciliation.rulesetVersion}</span>
@@ -195,12 +205,16 @@ export default function Home() {
         </header>
 
         <div className="content">
-          {active === "overview" && <Overview onGo={go} />}
-          {active === "matching" && <Matching />}
-          {active === "exceptions" && <Exceptions />}
-          {active === "bookings" && <Bookings receiptsByReservation={receiptsByReservation} receiptIndex={receiptIndex} exceptionByReceipt={exceptionByReceipt} />}
-          {active === "receipts" && <Receipts receiptIndex={receiptIndex} exceptionByReceipt={exceptionByReceipt} />}
-          {active === "statements" && <Statements lineIndex={lineIndex} />}
+          {/* Without source documents every data view would be a wall of zeros,
+              so show one honest status screen instead. The ruleset page still
+              works — it documents the engine, not the data. */}
+          {!hasData && active !== "rules" && <NoSourceDocuments view={active} onGo={go} />}
+          {hasData && active === "overview" && <Overview onGo={go} />}
+          {hasData && active === "matching" && <Matching />}
+          {hasData && active === "exceptions" && <Exceptions />}
+          {hasData && active === "bookings" && <Bookings receiptsByReservation={receiptsByReservation} receiptIndex={receiptIndex} exceptionByReceipt={exceptionByReceipt} />}
+          {hasData && active === "receipts" && <Receipts receiptIndex={receiptIndex} exceptionByReceipt={exceptionByReceipt} />}
+          {hasData && active === "statements" && <Statements lineIndex={lineIndex} />}
           {active === "rules" && <Rules />}
           <footer>
             <span>ClearClose · ruleset v{reconciliation.rulesetVersion}</span>
@@ -210,6 +224,53 @@ export default function Home() {
         </div>
       </main>
     </div>
+  );
+}
+
+function NoSourceDocuments({ view, onGo }: { view: ViewId; onGo: (view: ViewId) => void }) {
+  const required = [
+    { label: "บัญชีแยกประเภท", detail: "ไฟล์ .xlsx ที่มีคอลัมน์ Reservation Creation Time", pattern: "*บัญชีแยกประเภท*.xlsx" },
+    { label: "รายงานการรับเงิน", detail: "ไฟล์ .xlsx ที่มีคอลัมน์ Date, Payment Method, Amount", pattern: "*รายงานการรับเงิน*.xlsx" },
+    { label: "Statement บัญชี 885", detail: "PDF จาก K BIZ ของช่องทาง KbankGL885", pattern: "885*.pdf" },
+    { label: "Statement บัญชี 987", detail: "PDF จาก K BIZ ของช่องทาง KbankGL987", pattern: "987*.pdf" },
+  ];
+
+  return (
+    <>
+      <PageHeading view={view} action={<Pill tone="amber">ยังไม่มีเอกสาร</Pill>} />
+      <section className="panel empty-workspace">
+        <span className="empty-workspace-mark">↑</span>
+        <h2>ระบบพร้อมใช้งาน แต่ยังไม่มีเอกสารต้นทาง</h2>
+        <p>
+          ระบบอ่านข้อมูลจากโฟลเดอร์ <code>data/</code> ตอน build เท่านั้น ยังไม่มีไฟล์ใดถูกโหลดเข้ามา
+          ทุกหน้าที่แสดงตัวเลขจึงยังว่างอยู่
+        </p>
+
+        <div className="required-files">
+          {required.map((file) => (
+            <article key={file.pattern}>
+              <span className="check-icon missing">+</span>
+              <p><b>{file.label}</b><small>{file.detail}</small></p>
+              <code>{file.pattern}</code>
+            </article>
+          ))}
+        </div>
+
+        <div className="empty-workspace-steps">
+          <h3>วิธีโหลดข้อมูลเข้าระบบ</h3>
+          <ol>
+            <li>วางไฟล์ทั้งสี่ไว้ในโฟลเดอร์ <code>data/</code></li>
+            <li>รัน <code>npm run data:build</code> เพื่อแปลงเป็นชุดข้อมูล</li>
+            <li>deploy ใหม่อีกครั้ง — ทุกหน้าจะมีข้อมูลทันที</li>
+          </ol>
+          <p className="empty-workspace-note">
+            ต้องมีครบทั้งสี่ไฟล์ ถ้าใส่ไม่ครบ build จะหยุดพร้อมบอกว่าขาดไฟล์ใด เพื่อไม่ให้ได้ตัวเลขที่กระทบยอดไม่ครบ
+          </p>
+        </div>
+
+        <button className="primary-button" onClick={() => onGo("rules")}>ดูกฎการกระทบยอดที่ระบบใช้ →</button>
+      </section>
+    </>
   );
 }
 
@@ -278,7 +339,7 @@ function Overview({ onGo }: { onGo: (view: ViewId) => void }) {
               </div>
             ))}
           </div>
-          <div className="coverage-total"><span><small>รวมนอกขอบเขต</small><b>{baht(outOfScopeSatang)}</b></span><span><small>คิดเป็น</small><b>{Math.round((outOfScopeSatang / receiptTotal) * 100)}% ของยอดรับทั้งรอบ</b></span></div>
+          <div className="coverage-total"><span><small>รวมนอกขอบเขต</small><b>{baht(outOfScopeSatang)}</b></span><span><small>คิดเป็น</small><b>{receiptTotal ? Math.round((outOfScopeSatang / receiptTotal) * 100) : 0}% ของยอดรับทั้งรอบ</b></span></div>
         </div>
       </section>
 

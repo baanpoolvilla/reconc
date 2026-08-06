@@ -33,6 +33,19 @@ test("carries no hand-written demo rows in the UI", async () => {
   assert.doesNotMatch(page, /initialExceptions|initialDocuments|initialInvoices|statementMatches|bookingReconciliations|runRows|audits/);
 });
 
+test("deploys and runs before any source document is loaded", async () => {
+  const [page, builder] = await Promise.all([read("../app/page.tsx"), read("../scripts/build-dataset.mjs")]);
+
+  // An empty data/ must produce an empty dataset, not a failed build …
+  assert.match(builder, /state === "empty"/);
+  assert.match(builder, /sources: \[\]/);
+  // … a partly filled one must still fail loudly.
+  assert.match(builder, /state === "partial"/);
+  // … and the UI must swap in a status screen instead of a wall of zeros.
+  assert.match(page, /const hasData = meta\.sources\.length > 0/);
+  assert.match(page, /!hasData && active !== "rules" && <NoSourceDocuments/);
+});
+
 test("builds as a plain Next.js app that Vercel can deploy", async () => {
   const packageJson = JSON.parse(await read("../package.json"));
 

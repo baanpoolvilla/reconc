@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readWorkbook } from "./lib/xlsx.mjs";
@@ -31,16 +31,34 @@ function toIsoDateTime(text) {
   return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6] ?? "00"}`;
 }
 
-function findDataFile(hint, extension) {
-  const name = readdirSync(dataDir).find((file) => file.includes(hint) && file.endsWith(extension));
-  if (!name) throw new Error(`ไม่พบไฟล์ "${hint}${extension}" ในโฟลเดอร์ data/`);
+function dataDirEntries() {
+  if (!existsSync(dataDir)) return [];
+  return readdirSync(dataDir).filter((file) => !file.startsWith("."));
+}
+
+const matchers = {
+  ledger: (file) => file.includes(LEDGER_HINT) && file.endsWith(".xlsx"),
+  collection: (file) => file.includes(COLLECTION_HINT) && file.endsWith(".xlsx"),
+  statement885: (file) => file.startsWith("885") && file.endsWith(".pdf"),
+  statement987: (file) => file.startsWith("987") && file.endsWith(".pdf"),
+};
+
+function findDataFile(kind, label) {
+  const name = dataDirEntries().find(matchers[kind]);
+  if (!name) throw new Error(`ไม่พบไฟล์ ${label} ในโฟลเดอร์ data/`);
   return join(dataDir, name);
 }
 
-function findStatementFile(prefix) {
-  const name = readdirSync(dataDir).find((file) => file.startsWith(prefix) && file.endsWith(".pdf"));
-  if (!name) throw new Error(`ไม่พบไฟล์ Statement "${prefix}*.pdf" ในโฟลเดอร์ data/`);
-  return join(dataDir, name);
+/**
+ * An empty data/ folder is a valid state: the app deploys without any source
+ * documents and shows its empty state. A *partly* filled folder is not — that
+ * is a mistake worth failing on, so the operator notices the missing file.
+ */
+function dataFolderState() {
+  const entries = dataDirEntries();
+  const present = Object.entries(matchers).filter(([, match]) => entries.some(match)).map(([kind]) => kind);
+  if (present.length === 0) return "empty";
+  return present.length === Object.keys(matchers).length ? "complete" : "partial";
 }
 
 function headerIndex(rows) {
@@ -48,7 +66,7 @@ function headerIndex(rows) {
 }
 
 function buildBookings() {
-  const path = findDataFile(LEDGER_HINT, ".xlsx");
+  const path = findDataFile("ledger", "บัญชีแยกประเภท (.xlsx)");
   const [sheet] = readWorkbook(path);
   const rows = sheet.rows;
   const header = headerIndex(rows);
@@ -88,7 +106,7 @@ function buildBookings() {
 }
 
 function buildReceipts() {
-  const path = findDataFile(COLLECTION_HINT, ".xlsx");
+  const path = findDataFile("collection", "รายงานการรับเงิน (.xlsx)");
   const [sheet] = readWorkbook(path);
   const rows = sheet.rows;
   const header = headerIndex(rows);
@@ -127,48 +145,65 @@ function buildReceipts() {
 
 function buildStatements() {
   return [
-    { code: "885", method: "KbankGL885", ...parseStatementPdf(findStatementFile("885")) },
-    { code: "987", method: "KbankGL987", ...parseStatementPdf(findStatementFile("987")) },
+    { code: "885", method: "KbankGL885", ...parseStatementPdf(findDataFile("statement885", "Statement 885*.pdf")) },
+    { code: "987", method: "KbankGL987", ...parseStatementPdf(findDataFile("statement987", "Statement 987*.pdf")) },
   ];
 }
 
-const ledger = buildBookings();
-const collection = buildReceipts();
-const statements = buildStatements();
+// Asia/Bangkok local time, so it reads the same way as every timestamp in the
+// source documents.
+const generatedAt = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace("Z", "");
 
-const period = collection.receipts.length
-  ? collection.receipts.map((receipt) => receipt.date).sort()[0].slice(0, 7)
-  : "";
+const state = dataFolderState();
+if (state === "partial") {
+  const entries = dataDirEntries();
+  const missing = Object.entries(matchers).filter(([, match]) => !entries.some(match)).map(([kind]) => kind);
+  throw new Error(`โฟลเดอร์ data/ มีเอกสารไม่ครบ ขาด: ${missing.join(", ")} — ใส่ให้ครบทั้งสี่ไฟล์ หรือเอาออกให้หมดเพื่อ build แบบไม่มีข้อมูล`);
+}
 
-const dataset = {
-  meta: {
-    // Stored as Asia/Bangkok local time so it reads the same way as every
-    // other timestamp in the source documents.
-    generatedAt: new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace("Z", ""),
-    period,
-    rulesetVersion: "2.0.0",
-    sources: [
-      { kind: "ledger", name: ledger.source, rows: ledger.bookings.length },
-      { kind: "collection_report", name: collection.source, rows: collection.receipts.length },
-      ...statements.map((statement) => ({ kind: `bank_statement_${statement.code}`, name: statement.source, rows: statement.lines.length })),
-    ],
-  },
-  bookings: ledger.bookings,
-  receipts: collection.receipts,
-  statements,
-};
+let dataset;
 
-dataset.reconciliation = reconcile(dataset);
+if (state === "empty") {
+  dataset = {
+    meta: { generatedAt, period: "", rulesetVersion: "2.0.0", sources: [] },
+    bookings: [],
+    receipts: [],
+    statements: [],
+  };
+  dataset.reconciliation = reconcile(dataset);
+  console.log("data/ ว่าง — สร้างชุดข้อมูลเปล่า ระบบจะขึ้นหน้าจอสถานะ 'ยังไม่มีเอกสาร'");
+} else {
+  const ledger = buildBookings();
+  const collection = buildReceipts();
+  const statements = buildStatements();
+
+  dataset = {
+    meta: {
+      generatedAt,
+      period: collection.receipts.map((receipt) => receipt.date).sort()[0]?.slice(0, 7) ?? "",
+      rulesetVersion: "2.0.0",
+      sources: [
+        { kind: "ledger", name: ledger.source, rows: ledger.bookings.length },
+        { kind: "collection_report", name: collection.source, rows: collection.receipts.length },
+        ...statements.map((statement) => ({ kind: `bank_statement_${statement.code}`, name: statement.source, rows: statement.lines.length })),
+      ],
+    },
+    bookings: ledger.bookings,
+    receipts: collection.receipts,
+    statements,
+  };
+  dataset.reconciliation = reconcile(dataset);
+
+  console.log(`bookings        ${dataset.bookings.length}`);
+  console.log(`receipts        ${dataset.receipts.length}`);
+  for (const statement of statements) {
+    console.log(`statement ${statement.code}    ${statement.lines.length} lines · control delta ${statement.controlDeltaSatang}`);
+  }
+  const { summary } = dataset.reconciliation;
+  console.log(`matched groups  ${summary.matchedGroups} (${summary.matchRate}%)`);
+  console.log(`exceptions      ${summary.exceptionCount}`);
+}
 
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(dataset)}\n`, "utf8");
-
-const summary = dataset.reconciliation.summary;
-console.log(`bookings        ${dataset.bookings.length}`);
-console.log(`receipts        ${dataset.receipts.length}`);
-for (const statement of statements) {
-  console.log(`statement ${statement.code}    ${statement.lines.length} lines · control delta ${statement.controlDeltaSatang}`);
-}
-console.log(`matched groups  ${summary.matchedGroups} (${summary.matchRate}%)`);
-console.log(`exceptions      ${summary.exceptionCount}`);
 console.log(`written         ${outputPath}`);

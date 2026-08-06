@@ -159,6 +159,23 @@ footer { display: flex; align-items: center; gap: 18px; padding: 22px 5px 0; col
 .control-equation b { padding: 7px 10px; border-radius: 8px; background: #f5f4ee; font: 600 11px var(--serif); }
 .control-equation i { color: var(--blue); font-style: normal; font-weight: 700; }
 
+.empty-workspace { padding: 46px 42px; text-align: center; }
+.empty-workspace-mark { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 15px; background: var(--green-soft); color: var(--forest); font-size: 22px; }
+.empty-workspace h2 { margin: 0; font: 620 26px var(--serif); }
+.empty-workspace > p { max-width: 620px; margin: 11px auto 0; color: var(--muted); font-size: 12px; line-height: 1.75; }
+.empty-workspace code { padding: 1px 6px; border-radius: 5px; background: #f0efe8; font: 600 11px var(--mono); }
+.required-files { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; max-width: 780px; margin: 28px auto 0; text-align: left; }
+.required-files article { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: white; }
+.required-files p { flex: 1; min-width: 0; margin: 0; }
+.required-files b { display: block; font-size: 12px; }
+.required-files small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+.required-files code { flex: 0 0 auto; }
+.empty-workspace-steps { max-width: 780px; margin: 26px auto 0; padding: 20px 24px; border: 1px solid #cfd9ee; border-radius: 12px; background: var(--blue-soft); text-align: left; }
+.empty-workspace-steps h3 { margin: 0 0 10px; font: 650 14px var(--serif); }
+.empty-workspace-steps ol { margin: 0; padding-left: 20px; color: #34405a; font-size: 12px; line-height: 2; }
+.empty-workspace-note { margin: 12px 0 0; color: #46526b; font-size: 10px; line-height: 1.7; }
+.empty-workspace > .primary-button { margin-top: 26px; }
+
 .tabs.wrap { flex-wrap: wrap; }
 .statement-toolbar { grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(240px, 1fr); align-items: start; }
 .statement-toolbar .tabs { flex-wrap: wrap; }

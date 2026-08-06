@@ -46,6 +46,15 @@
 
 เลขที่บัญชี ชื่อลูกค้า และยอดเงินทั้งหมดถูกอ่านจากไฟล์ตอน build ไม่มีค่าใดถูกเขียนลงในซอร์สโค้ด
 
+**`data/` ไม่ถูก commit ขึ้น git โดยตั้งใจ** เพราะเป็นข้อมูลการเงินและข้อมูลส่วนบุคคลจริง
+`data:build` จึงรองรับสามสถานะ:
+
+| สถานะของ `data/` | ผล |
+|---|---|
+| ว่าง / ไม่มีโฟลเดอร์ | สร้างชุดข้อมูลเปล่า build ผ่าน ระบบขึ้นหน้า "ยังไม่มีเอกสารต้นทาง" |
+| ครบทั้งสี่ไฟล์ | กระทบยอดเต็มรูปแบบ |
+| มีบางไฟล์ | **build หยุดพร้อมบอกว่าขาดไฟล์ใด** — กันไม่ให้ได้ตัวเลขที่กระทบยอดไม่ครบ |
+
 สคริปต์อ่านไฟล์เอง ไม่ต้องแปลงเป็น CSV ก่อน:
 
 - `scripts/lib/zip.mjs` + `scripts/lib/xlsx.mjs` — อ่าน `.xlsx` โดยตรง
@@ -85,18 +94,19 @@ tests/                       parser · engine · UI
 เป็น Next.js มาตรฐาน Vercel ตรวจจับเองได้ ไม่ต้องตั้งค่าเพิ่ม หน้า `/` ถูก prerender เป็น static
 ส่วน `/api/dataset` เป็น serverless function
 
+เนื่องจาก `data/` ไม่ได้อยู่ใน repo การ deploy จาก GitHub จะได้ **ตัวระบบเปล่า** ซึ่งเป็นสิ่งที่ตั้งใจ —
+ระบบขึ้นได้ ใช้งานได้ และรอโหลดเอกสารจริงทีหลัง
+
+การโหลดข้อมูลเข้าระบบที่ deploy แล้ว: วางไฟล์ใน `data/` บนเครื่อง แล้ว
+
 ```bash
-npx vercel login      # ครั้งแรกเท่านั้น (เปิด browser ยืนยันตัวตน)
-npx vercel --prod
+npm run data:build     # แปลงเอกสารเป็นชุดข้อมูล
+npx vercel --prod      # deploy พร้อมข้อมูล (CLI อัปโหลดจากเครื่อง ไม่ผ่าน GitHub)
 ```
 
-`data/` และ `lib/dataset.generated.json` ต้องอยู่ใน deployment เพราะ build รัน `npm run data:build`
-ซึ่งอ่านไฟล์ต้นฉบับใน `data/` ก่อนเสมอ
-
-> **ก่อน deploy สู่สาธารณะ** ข้อมูลชุดนี้เป็นข้อมูลจริง — เลขที่บัญชีธนาคาร ชื่อและเบอร์โทรลูกค้า
-> และประวัติเงินเข้า-ออกทั้งเดือนของบริษัท URL ของ Vercel เปิดสาธารณะโดยค่าเริ่มต้น
-> ควรเปิด **Deployment Protection** (Settings → Deployment Protection → Vercel Authentication
-> หรือ Password Protection) ก่อนหรือทันทีหลัง deploy ครั้งแรก
+> **ถ้า deploy พร้อมข้อมูลจริง** URL ของ Vercel เปิดสาธารณะโดยค่าเริ่มต้น ต้องเปิด
+> **Deployment Protection** (Settings → Deployment Protection → Vercel Authentication
+> หรือ Password Protection) ก่อนเสมอ และอย่า commit `data/` ขึ้น repo ที่เป็น public
 
 ตั้ง `NEXT_PUBLIC_SITE_URL` ได้ถ้าต้องการกำหนดโดเมนใน metadata เอง มิฉะนั้นระบบใช้
 `VERCEL_PROJECT_PRODUCTION_URL` ที่ Vercel ใส่ให้อัตโนมัติ

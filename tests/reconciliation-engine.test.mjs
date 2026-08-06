@@ -172,6 +172,20 @@ test("reconcile reports out-of-scope payment methods separately", () => {
   assert.deepEqual(result.outOfScope.map((item) => item.method), ["Kbank-Posh"]);
 });
 
+test("reconciles an empty dataset without throwing", () => {
+  // This is the shape the build emits when data/ holds no source documents,
+  // so the app can deploy and run before any statement has been loaded.
+  const result = reconcile({ bookings: [], receipts: [], statements: [] });
+
+  assert.deepEqual(result.accounts, []);
+  assert.deepEqual(result.groups, []);
+  assert.deepEqual(result.exceptions, []);
+  assert.deepEqual(result.outOfScope, []);
+  assert.equal(result.summary.matchRate, 0);
+  assert.equal(result.summary.inScopeReceipts, 0);
+  assert.equal(result.summary.controlBalanced, true);
+});
+
 test("the generated dataset satisfies both hard rules on every match", async () => {
   const dataset = JSON.parse(await readFile(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
 
