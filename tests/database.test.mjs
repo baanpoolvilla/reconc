@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { migrate } from "../lib/db/client.mjs";
+import { migrate, schemaSql } from "../lib/db/client.mjs";
 import {
   latestDataset,
   recordDocument,
@@ -39,6 +40,17 @@ test("the schema applies cleanly to an empty Postgres database", async () => {
   assert.deepEqual(tables.map((row) => row.table_name), [
     "audit_events", "bank_statements", "bank_transactions", "bookings", "documents", "receipts", "reconciliation_runs",
   ]);
+});
+
+test("carries its schema in the bundle instead of reading a file at runtime", async () => {
+  // A serverless bundle cannot rely on a sibling .sql file being traced into it,
+  // and the bundler's URL polyfill breaks fileURLToPath. Both cost a production
+  // outage once already.
+  const client = await readFile(new URL("../lib/db/client.mjs", import.meta.url), "utf8");
+
+  assert.doesNotMatch(client, /node:fs|readFileSync|fileURLToPath|import\.meta\.url/);
+  assert.match(schemaSql(), /CREATE SCHEMA IF NOT EXISTS clearclose/);
+  assert.equal(schemaSql().match(/CREATE TABLE/g).length, 7);
 });
 
 test("shares a database safely with tables of the same name", async () => {

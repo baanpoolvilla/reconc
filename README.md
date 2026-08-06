@@ -107,7 +107,7 @@ lib/parsers/                 zip · xlsx · pdf · statement · documents
                              ทุกตัวรับ Buffer ล้วน ๆ จึงใช้ได้ทั้งตอน build และตอนอัปโหลด
 lib/reconciliation.mjs       engine การจับคู่ (ruleset v2.0.0)
 lib/dataset-builder.mjs      ประกอบเอกสารที่ parse แล้วเป็นชุดข้อมูลเดียว
-lib/db/                      schema.sql · client (Neon/PGlite) · repository
+lib/db/                      schema · client (Neon/PGlite) · repository
 lib/data-source.ts           เลือกว่าจะอ่านจาก Postgres หรือจาก build
 scripts/build-dataset.mjs    pipeline: data/ → lib/dataset.generated.json
 app/page.tsx                 server component โหลดข้อมูลแล้วส่งให้ workspace
