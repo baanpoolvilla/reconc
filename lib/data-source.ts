@@ -48,12 +48,12 @@ export async function loadDataset(): Promise<LoadedDataset> {
   }
 
   try {
-    const [{ getDb, migrate }, { latestDataset }] = await Promise.all([
+    const [{ getDb, ensureSchema }, { latestDataset }] = await Promise.all([
       import("./db/client.mjs"),
       import("./db/repository.mjs"),
     ]);
     const db = await getDb();
-    await migrate(db);
+    await ensureSchema(db);
     const stored = (await latestDataset(db)) as Dataset | null;
     if (stored) return { dataset: stored, source: "database", databaseConfigured: true };
     return { dataset: emptyDataset, source: "empty", databaseConfigured: true };

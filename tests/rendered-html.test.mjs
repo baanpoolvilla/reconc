@@ -32,6 +32,23 @@ test("the matching view explains which amount matched which, and why", async () 
   assert.match(workspace, /bookingBalanceDueSatang/);
 });
 
+test("the ledger reads like a spreadsheet and rings each amount by outcome", async () => {
+  const [workspace, css] = await Promise.all([read("../app/workspace.tsx"), read("../app/globals.css")]);
+
+  // Every column the reviewer asked to see, keyed on the receipt line.
+  for (const column of ["วันจอง", "เลขที่จอง", "บ้านพัก / รหัสบ้าน", "ผู้จอง", "ช่องทางติดต่อ", "รายการเงิน", "ยอดจองรวม", "จ่ายจริง", "ยังไม่จ่าย"]) {
+    assert.ok(workspace.includes(`<th>${column}</th>`) || workspace.includes(`<th className="num">${column}</th>`), `ledger is missing the ${column} column`);
+  }
+  assert.match(workspace, /amount-ring \$\{row\.status\}/);
+  assert.match(css, /\.amount-ring\.matched \{[^}]*border-color: var\(--green\)/);
+  assert.match(css, /\.amount-ring\.exception \{[^}]*border-color: var\(--red\)/);
+  // A border shorthand on the legend would out-specify the ring colours.
+  assert.doesNotMatch(css, /\.ledger-legend i, \.foot-split i \{[^}]*border: /);
+  // Payments of one booking read as a block, the way merged cells do.
+  assert.match(workspace, /firstOfBooking/);
+  assert.match(workspace, /exportCsv/);
+});
+
 test("carries no hand-written demo rows in the UI", async () => {
   const workspace = await read("../app/workspace.tsx");
 

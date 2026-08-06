@@ -176,6 +176,51 @@ footer { display: flex; align-items: center; gap: 18px; padding: 22px 5px 0; col
 .empty-workspace-note { margin: 12px 0 0; color: #46526b; font-size: 10px; line-height: 1.7; }
 .empty-workspace > .primary-button { margin-top: 26px; }
 
+/* ── ledger: the spreadsheet view ───────────────────────────────────────── */
+.ledger-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin: 0 21px 12px; padding: 11px 15px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f5; color: var(--muted); font-size: 10px; }
+.ledger-legend > span { display: flex; align-items: center; gap: 7px; }
+.ledger-legend > button { margin-left: auto; }
+/* Set width/style only — the ring classes own the colour, and a `border`
+   shorthand here would out-specify them and repaint every swatch grey. */
+.ledger-legend i, .foot-split i { width: 15px; height: 15px; flex: 0 0 auto; border-radius: 4px; border-width: 2px; border-style: solid; }
+.ring-green { border-color: var(--green); background: #eaf5ef; }
+.ring-red { border-color: var(--red); background: #fbecea; }
+.ring-grey { border-color: #b6bcb6; background: #f2f2ee; }
+
+.ledger-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.ledger-table th { position: sticky; top: 0; z-index: 2; padding: 10px 11px; border-bottom: 1px solid var(--line); background: #f5f4ee; color: var(--muted); font-size: 9px; font-weight: 700; text-align: left; white-space: nowrap; }
+.ledger-table th.num, .ledger-table td.num { text-align: right; }
+.ledger-table td { padding: 9px 11px; border-bottom: 1px solid #f0f0ea; vertical-align: top; }
+.ledger-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ledger-table small.block { margin-top: 2px; color: var(--muted); font-size: 9px; }
+
+/* A booking's payments read as one block, the way merged cells do in a sheet. */
+.ledger-table tr.group-start td { border-top: 1px solid #dcded7; }
+.ledger-table tr.group-cont td { background: #fcfcfa; }
+.ledger-table tr:hover td { background: #f7f9f8; }
+.cont-mark { color: #c4c9c3; }
+
+/* The point of the whole screen: is this amount reconciled or not. */
+.amount-ring { display: inline-block; padding: 3px 9px; border: 2px solid transparent; border-radius: 7px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.amount-ring.matched { border-color: var(--green); background: #eaf5ef; color: #1d5a41; }
+.amount-ring.exception { border-color: var(--red); background: #fbecea; color: #8d3328; }
+.amount-ring.outofscope { border-color: #d3d7d2; background: #f4f4f0; color: var(--muted); }
+
+.channel-chip { display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: 9px; font-weight: 700; }
+.channel-chip.line { background: #e2f3e4; color: #2b6b32; }
+.channel-chip.trip { background: #e3ecfd; color: #1f4ea8; }
+.channel-chip.booking { background: #e0e8fb; color: #23408f; }
+.channel-chip.airbnb { background: #fde6ea; color: #a32b46; }
+.channel-chip.agent { background: #fbefd2; color: #80580f; }
+.channel-chip.facebook { background: #e6ebf7; color: #2c447f; }
+.channel-chip.other { background: var(--slate-soft); color: var(--muted); }
+
+.ledger-table tfoot td { position: sticky; bottom: 0; padding: 12px 11px; border-top: 1px solid var(--line); background: #f5f4ee; font-weight: 700; }
+.ledger-table tfoot td:first-child { color: var(--muted); font-weight: 400; }
+.foot-split { display: inline-flex; align-items: center; gap: 6px; margin-left: 18px; font-size: 10px; font-weight: 600; }
+
+@media (max-width: 1400px) { .ledger-table { font-size: 10px; }.ledger-table td, .ledger-table th { padding: 8px 8px; } }
+
 /* ── match / exception evidence ─────────────────────────────────────────── */
 .evidence { margin: 0 20px 20px; padding: 22px 24px 24px; border: 1px solid #cfd9d3; border-radius: 15px; background: linear-gradient(180deg, #fbfcfb, var(--card)); }
 .evidence-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 17px; border-bottom: 1px solid var(--line); }

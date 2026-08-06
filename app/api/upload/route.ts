@@ -1,5 +1,5 @@
 import { DOCUMENT_KINDS, detectDocumentKind, parseDocument } from "../../../lib/parsers/documents.mjs";
-import { getDb, migrate } from "../../../lib/db/client.mjs";
+import { getDb, ensureSchema } from "../../../lib/db/client.mjs";
 import {
   recordAudit,
   recordDocument,
@@ -28,7 +28,7 @@ export async function GET() {
   }
   try {
     const db = await getDb();
-    await migrate(db);
+    await ensureSchema(db);
     return Response.json({ databaseConfigured: true, documents: await storedDocuments(db) });
   } catch (error) {
     return Response.json({ databaseConfigured: true, documents: [], error: error instanceof Error ? error.message : "ต่อฐานข้อมูลไม่สำเร็จ" }, { status: 500 });
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
   try {
     const db = await getDb();
-    await migrate(db);
+    await ensureSchema(db);
     const accepted: Accepted[] = [];
 
     for (const file of files) {

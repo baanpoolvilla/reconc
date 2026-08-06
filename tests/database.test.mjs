@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { migrate, schemaSql } from "../lib/db/client.mjs";
+import { ensureSchema, migrate, resetSchemaCache, schemaSql } from "../lib/db/client.mjs";
 import {
   latestDataset,
   recordDocument,
@@ -75,6 +75,31 @@ test("migrate is idempotent", async () => {
   await migrate(db);
   const [row] = await db.query("SELECT count(*)::int AS total FROM clearclose.documents");
   assert.equal(row.total, 0);
+});
+
+test("ensureSchema applies the schema once, and retries after a failure", async () => {
+  resetSchemaCache();
+  const pg = new PGlite();
+  let statements = 0;
+  const db = {
+    query: async (sql, params = []) => {
+      statements += 1;
+      return (await pg.query(sql, params)).rows;
+    },
+  };
+
+  await ensureSchema(db);
+  const afterFirst = statements;
+  await ensureSchema(db);
+  await ensureSchema(db);
+  assert.equal(statements, afterFirst, "a warm process must not re-run the schema");
+
+  // A failed attempt must not be cached, or the function stays broken until redeploy.
+  resetSchemaCache();
+  const broken = { query: async () => { throw new Error("connection reset"); } };
+  await assert.rejects(ensureSchema(broken), /connection reset/);
+  await ensureSchema(db);
+  assert.ok(statements > afterFirst, "the next request retries");
 });
 
 test("an upload round-trips through Postgres and reproduces the same reconciliation", async () => {

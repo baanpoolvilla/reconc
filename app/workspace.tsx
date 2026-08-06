@@ -15,7 +15,7 @@ import {
   thaiMonthLabel,
 } from "../lib/dataset";
 
-type ViewId = "overview" | "matching" | "exceptions" | "bookings" | "statements" | "upload" | "rules";
+type ViewId = "overview" | "ledger" | "matching" | "exceptions" | "bookings" | "statements" | "upload" | "rules";
 type Tone = "green" | "blue" | "amber" | "red" | "slate";
 
 const reasonTone: Record<string, Tone> = {
@@ -110,6 +110,7 @@ export default function Workspace({ dataset, source, databaseConfigured, loadErr
   const navGroups: { label: string; items: { id: ViewId; label: string; icon: string; badge?: string }[] }[] = [
     { label: "การกระทบยอด", items: [
       { id: "overview", label: "ภาพรวม", icon: "⌂" },
+      { id: "ledger", label: "ตารางรับเงิน", icon: "▤", badge: hasData ? String(dataset.receipts.length) : undefined },
       { id: "matching", label: "รายละเอียดการจับคู่", icon: "↔", badge: hasData ? String(groups.length) : undefined },
       { id: "exceptions", label: "ข้อยกเว้น", icon: "!", badge: hasData ? String(exceptions.length) : undefined },
     ] },
@@ -196,6 +197,7 @@ export default function Workspace({ dataset, source, databaseConfigured, loadErr
             {active === "rules" && <Rules />}
             {!hasData && active !== "upload" && active !== "rules" && <NoSourceDocuments />}
             {hasData && active === "overview" && <Overview />}
+            {hasData && active === "ledger" && <Ledger />}
             {hasData && active === "matching" && <Matching />}
             {hasData && active === "exceptions" && <Exceptions />}
             {hasData && active === "bookings" && <Bookings />}
@@ -345,6 +347,212 @@ function AccountCard({ account, onOpen }: { account: AccountResult; onOpen: () =
       </div>
     </article>
   );
+}
+
+// ── ledger (the spreadsheet view) ─────────────────────────────────────────────
+
+type LedgerRow = {
+  receipt: Receipt;
+  booking?: Booking;
+  status: "matched" | "exception" | "outofscope";
+  group?: MatchGroup;
+  exception?: ReconciliationException;
+  firstOfBooking: boolean;
+  rowsInBooking: number;
+};
+
+function Ledger() {
+  const { dataset } = useWorkspace();
+  const { bookings, receipts, reconciliation } = dataset;
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [query, setQuery] = useState("");
+
+  const rows = useMemo<LedgerRow[]>(() => {
+    const bookingIndex = new Map(bookings.map((booking) => [booking.reservationNo, booking]));
+    const groupByReceipt = new Map<string, MatchGroup>();
+    for (const group of reconciliation.groups) for (const item of group.receipts) groupByReceipt.set(item.id, group);
+    const exceptionByReceipt = new Map<string, ReconciliationException>();
+    for (const exception of reconciliation.exceptions) if (exception.receiptId) exceptionByReceipt.set(exception.receiptId, exception);
+
+    // Sort so every payment of a booking sits together, newest booking first —
+    // the order an accountant reads a ledger in.
+    const sorted = [...receipts].sort((a, b) => {
+      const left = bookingIndex.get(a.reservationNo)?.createdAt ?? a.date;
+      const right = bookingIndex.get(b.reservationNo)?.createdAt ?? b.date;
+      return right.localeCompare(left) || a.reservationNo.localeCompare(b.reservationNo) || a.date.localeCompare(b.date);
+    });
+
+    const counts = new Map<string, number>();
+    for (const receipt of sorted) counts.set(receipt.reservationNo, (counts.get(receipt.reservationNo) ?? 0) + 1);
+
+    return sorted.map((receipt, index) => {
+      const group = groupByReceipt.get(receipt.id);
+      const exception = exceptionByReceipt.get(receipt.id);
+      const firstOfBooking = index === 0 || sorted[index - 1].reservationNo !== receipt.reservationNo;
+      return {
+        receipt,
+        booking: bookingIndex.get(receipt.reservationNo),
+        status: group ? "matched" : exception ? "exception" : "outofscope",
+        group,
+        exception,
+        firstOfBooking,
+        rowsInBooking: counts.get(receipt.reservationNo) ?? 1,
+      };
+    });
+  }, [bookings, receipts, reconciliation]);
+
+  const channels = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const row of rows) totals.set(row.receipt.channel || "ไม่ระบุ", (totals.get(row.receipt.channel || "ไม่ระบุ") ?? 0) + 1);
+    return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+
+  const visible = rows.filter((row) => {
+    if (channelFilter !== "all" && (row.receipt.channel || "ไม่ระบุ") !== channelFilter) return false;
+    if (statusFilter !== "all" && row.status !== statusFilter) return false;
+    if (!query.trim()) return true;
+    const haystack = `${row.receipt.reservationNo} ${row.receipt.guest} ${row.receipt.roomType} ${row.receipt.roomNumber} ${row.receipt.group} ${row.receipt.method}`;
+    return haystack.toLowerCase().includes(query.trim().toLowerCase());
+  });
+
+  const totals = visible.reduce((acc, row) => ({
+    receipt: acc.receipt + row.receipt.amountSatang,
+    matched: acc.matched + (row.status === "matched" ? row.receipt.amountSatang : 0),
+    unmatched: acc.unmatched + (row.status === "exception" ? row.receipt.amountSatang : 0),
+  }), { receipt: 0, matched: 0, unmatched: 0 });
+
+  const exportCsv = () => {
+    const header = ["วันจอง", "เวลาจอง", "เลขที่จอง", "บ้านพัก", "รหัสบ้าน", "ผู้จอง", "ช่องทางติดต่อ", "วันรับเงิน", "ช่องทางรับเงิน", "ยอดรับเงิน", "ยอดจองรวม", "จ่ายแล้ว", "คงค้าง", "สถานะกระทบยอด", "อ้างอิง"];
+    const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const money = (satang: number) => (satang / 100).toFixed(2);
+    const lines = visible.map((row) => [
+      row.booking?.createdDate ?? "", row.booking?.createdAt.slice(11, 16) ?? "", row.receipt.reservationNo,
+      row.receipt.group, row.receipt.roomType, row.receipt.guest, row.receipt.channel,
+      row.receipt.date, row.receipt.method, money(row.receipt.amountSatang),
+      money(row.booking?.totalSatang ?? 0), money(row.booking?.paidSatang ?? 0), money(row.booking?.balanceDueSatang ?? 0),
+      row.status === "matched" ? "ตรง" : row.status === "exception" ? "ไม่ตรง" : "นอกขอบเขต",
+      row.group?.id ?? row.exception?.id ?? "",
+    ].map(escape).join(","));
+
+    // BOM so Excel opens Thai text in UTF-8 rather than mangling it.
+    const blob = new Blob([`﻿${[header.map(escape).join(","), ...lines].join("\r\n")}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clearclose-${dataset.meta.period || "export"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Receipts ledger"
+        title="ตารางรับเงิน"
+        description="ทุกรายการรับเงินเรียงตามคำจอง ยอดที่กระทบตรงจะขึ้นกรอบเขียว ยอดที่ไม่ตรงขึ้นกรอบแดง"
+        action={
+          <div className="heading-stats">
+            <span><b>{visible.length}</b><small>รายการที่แสดง</small></span>
+            <span><b>{baht(totals.receipt)}</b><small>ยอดรับเงินรวม</small></span>
+          </div>
+        }
+      />
+
+      <section className="panel data-panel">
+        <div className="statement-toolbar">
+          <div className="tabs wrap">
+            {[["all", "ทุกสถานะ"], ["matched", "กระทบตรง"], ["exception", "ไม่ตรง"], ["outofscope", "นอกขอบเขต"]].map(([value, label]) => (
+              <button key={value} className={statusFilter === value ? "active" : ""} onClick={() => setStatusFilter(value)}>
+                {label} <span>{value === "all" ? rows.length : rows.filter((row) => row.status === value).length}</span>
+              </button>
+            ))}
+          </div>
+          <div className="tabs wrap">
+            <button className={channelFilter === "all" ? "active" : ""} onClick={() => setChannelFilter("all")}>ทุกช่องทาง</button>
+            {channels.map(([channel, count]) => (
+              <button key={channel} className={channelFilter === channel ? "active" : ""} onClick={() => setChannelFilter(channel)}>{channel} <span>{count}</span></button>
+            ))}
+          </div>
+          <label className="search-box">⌕<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหาเลขที่จอง ชื่อผู้จอง หรือรหัสบ้าน" /></label>
+        </div>
+
+        <div className="ledger-legend">
+          <span><i className="ring-green" /> กระทบยอดตรง — วันเดียวกันและยอดตรงพอดี</span>
+          <span><i className="ring-red" /> ไม่ตรง — ดูเหตุผลได้ที่หน้าข้อยกเว้น</span>
+          <span><i className="ring-grey" /> นอกขอบเขต — ช่องทางที่ยังไม่มี Statement</span>
+          <button className="secondary-button" onClick={exportCsv}>⇩ ส่งออก CSV</button>
+        </div>
+
+        <div className="responsive-table scroll-table">
+          <table className="ledger-table">
+            <thead>
+              <tr>
+                <th>วันจอง</th>
+                <th>เลขที่จอง</th>
+                <th>บ้านพัก / รหัสบ้าน</th>
+                <th>ผู้จอง</th>
+                <th>ช่องทางติดต่อ</th>
+                <th>วันรับเงิน</th>
+                <th>ช่องทางรับเงิน</th>
+                <th className="num">รายการเงิน</th>
+                <th className="num">ยอดจองรวม</th>
+                <th className="num">จ่ายจริง</th>
+                <th className="num">ยังไม่จ่าย</th>
+                <th>กระทบยอด</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.slice(0, 300).map((row) => (
+                <tr key={row.receipt.id} className={`${row.firstOfBooking ? "group-start" : "group-cont"} ${row.status}`}>
+                  <td>{row.firstOfBooking ? <><b>{row.booking ? thaiDate(row.booking.createdDate) : "—"}</b><small className="block">{row.booking ? `${row.booking.createdAt.slice(11, 16)} น.` : "ไม่พบคำจอง"}</small></> : <span className="cont-mark">〃</span>}</td>
+                  <td className="mono">{row.firstOfBooking ? row.receipt.reservationNo : <span className="cont-mark">〃</span>}</td>
+                  <td>{row.firstOfBooking ? <><b>{row.receipt.group || "—"}</b><small className="block">{row.receipt.roomType}</small></> : <span className="cont-mark">〃</span>}</td>
+                  <td>{row.firstOfBooking ? (row.receipt.guest || row.booking?.guest || "—") : <span className="cont-mark">〃</span>}</td>
+                  <td>{row.firstOfBooking ? <span className={`channel-chip ${channelClass(row.receipt.channel)}`}>{row.receipt.channel || "ไม่ระบุ"}</span> : <span className="cont-mark">〃</span>}</td>
+                  <td>{thaiDate(row.receipt.date)}</td>
+                  <td>{row.receipt.method}{row.rowsInBooking > 1 && row.firstOfBooking && <small className="block">แบ่งจ่าย {row.rowsInBooking} งวด</small>}</td>
+                  <td className="num"><span className={`amount-ring ${row.status}`}>{baht(row.receipt.amountSatang)}</span></td>
+                  <td className="num">{row.firstOfBooking ? baht(row.booking?.totalSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
+                  <td className="num">{row.firstOfBooking ? baht(row.booking?.paidSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
+                  <td className={`num ${row.booking?.balanceDueSatang ? "negative" : ""}`}>{row.firstOfBooking ? baht(row.booking?.balanceDueSatang ?? 0) : <span className="cont-mark">〃</span>}</td>
+                  <td>
+                    {row.status === "matched" && <><Pill tone="green">{row.group?.type}</Pill><small className="block mono">{row.group?.id}</small></>}
+                    {row.status === "exception" && <><Pill tone="red">ไม่ตรง</Pill><small className="block mono">{row.exception?.reason}</small></>}
+                    {row.status === "outofscope" && <Pill>นอกขอบเขต</Pill>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={7}>รวม {visible.length.toLocaleString("en-US")} รายการที่แสดง</td>
+                <td className="num"><strong>{baht(totals.receipt)}</strong></td>
+                <td className="num" colSpan={3}>
+                  <span className="foot-split"><i className="ring-green" />ตรง {baht(totals.matched)}</span>
+                  <span className="foot-split"><i className="ring-red" />ไม่ตรง {baht(totals.unmatched)}</span>
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        {visible.length > 300 && <p className="table-note">แสดง 300 จาก {visible.length.toLocaleString("en-US")} รายการ · ใช้ตัวกรองหรือส่งออก CSV เพื่อดูทั้งหมด</p>}
+        {!visible.length && <div className="empty-state"><span>⌕</span><h3>ไม่พบรายการที่ตรงกับตัวกรอง</h3><p>ลองล้างคำค้นหาหรือเลือกทุกช่องทาง</p></div>}
+      </section>
+    </>
+  );
+}
+
+function channelClass(channel: string) {
+  const key = channel.toLowerCase();
+  if (key.includes("line")) return "line";
+  if (key.includes("trip")) return "trip";
+  if (key.includes("booking.com")) return "booking";
+  if (key.includes("airbnb")) return "airbnb";
+  if (key.includes("agent")) return "agent";
+  if (key.includes("facebook")) return "facebook";
+  return "other";
 }
 
 // ── matching ──────────────────────────────────────────────────────────────────
