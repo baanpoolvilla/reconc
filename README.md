@@ -44,9 +44,13 @@
 
 ตั้งค่าให้ใช้ฐานข้อมูล:
 
-1. สร้าง project ที่ [neon.tech](https://neon.tech) (free tier พอ) แล้วคัดลอก connection string
+1. คัดลอก connection string จาก Neon — **ใช้ project/database ที่มีอยู่แล้วได้** ไม่ต้องสร้างใหม่
 2. Vercel → Settings → Environment Variables → เพิ่ม `DATABASE_URL`
-3. Redeploy — ระบบสร้างตารางเองอัตโนมัติในการเรียกครั้งแรก (`migrate()` เป็น idempotent)
+3. Redeploy — ระบบสร้าง schema และตารางเองอัตโนมัติในการเรียกครั้งแรก (`migrate()` เป็น idempotent)
+
+ออบเจ็กต์ทั้งหมดอยู่ใน schema ชื่อ **`clearclose`** ไม่ใช่ `public` ระบบจึงใช้ database
+ร่วมกับแอปอื่นได้โดยไม่ชนกัน แม้แอปนั้นจะมีตารางชื่อ `documents` หรือ `receipts` อยู่แล้ว
+(มีเทสต์คุมกรณีนี้ไว้) ถ้าต้องการลบระบบออกทั้งหมดคือ `DROP SCHEMA clearclose CASCADE;`
 
 จากนั้นอัปโหลดเอกสารได้ที่หน้า **นำเข้าเอกสาร** เลือกได้ทีเดียวทั้งสี่ไฟล์
 ระบบดูจากชื่อไฟล์ว่าเป็นเอกสารชนิดใด แล้ว parse → เก็บลง Postgres → กระทบยอดใหม่ทั้งรอบ

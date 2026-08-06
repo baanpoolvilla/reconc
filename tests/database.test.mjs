@@ -34,17 +34,34 @@ function loadSource(kind) {
 
 test("the schema applies cleanly to an empty Postgres database", async () => {
   const db = await freshDb();
-  const tables = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name");
+  const tables = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'clearclose' ORDER BY table_name");
 
   assert.deepEqual(tables.map((row) => row.table_name), [
     "audit_events", "bank_statements", "bank_transactions", "bookings", "documents", "receipts", "reconciliation_runs",
   ]);
 });
 
+test("shares a database safely with tables of the same name", async () => {
+  // Pointing DATABASE_URL at an existing Neon database must not touch, read or
+  // be confused by another application's tables.
+  const pg = new PGlite();
+  const db = { query: async (sql, params = []) => (await pg.query(sql, params)).rows };
+  await db.query("CREATE TABLE documents (id text primary key, unrelated text)");
+  await db.query("INSERT INTO documents (id, unrelated) VALUES ('other-app', 'keep me')");
+
+  await migrate(db);
+  await recordDocument(db, { id: "DOC-1", kind: "collection", name: "x.xlsx", sha256: "d".repeat(64), sizeBytes: 1, rowCount: 0, uploadedBy: "test" });
+
+  const [ours] = await db.query("SELECT count(*)::int AS total FROM clearclose.documents");
+  const theirs = await db.query("SELECT id, unrelated FROM public.documents");
+  assert.equal(ours.total, 1);
+  assert.deepEqual(theirs, [{ id: "other-app", unrelated: "keep me" }]);
+});
+
 test("migrate is idempotent", async () => {
   const db = await freshDb();
   await migrate(db);
-  const [row] = await db.query("SELECT count(*)::int AS total FROM documents");
+  const [row] = await db.query("SELECT count(*)::int AS total FROM clearclose.documents");
   assert.equal(row.total, 0);
 });
 
@@ -91,8 +108,8 @@ test("re-uploading a document replaces its rows instead of doubling them", async
   await replaceReceipts(db, parsed.receipts);
   await recordDocument(db, { id: "DOC-2", kind: "collection", name, sha256: "b".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
 
-  const [receipts] = await db.query("SELECT count(*)::int AS total FROM receipts");
-  const [documents] = await db.query("SELECT count(*)::int AS total FROM documents");
+  const [receipts] = await db.query("SELECT count(*)::int AS total FROM clearclose.receipts");
+  const [documents] = await db.query("SELECT count(*)::int AS total FROM clearclose.documents");
   assert.equal(receipts.total, parsed.receipts.length);
   assert.equal(documents.total, 1, "one row per document kind");
 });

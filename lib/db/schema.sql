@@ -1,9 +1,13 @@
+-- All objects live in their own schema so ClearClose can share a Neon
+-- database with other applications without colliding on generic table names.
+CREATE SCHEMA IF NOT EXISTS clearclose;
+
 -- ClearClose canonical schema.
 -- Money is always integer satang; never a float. Dates that come off an
 -- accounting document stay `text` in ISO form so a timezone can never shift
 -- them — the matching rule compares calendar days, not instants.
 
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE IF NOT EXISTS clearclose.documents (
   id            text PRIMARY KEY,
   kind          text NOT NULL,
   name          text NOT NULL,
@@ -15,7 +19,7 @@ CREATE TABLE IF NOT EXISTS documents (
   UNIQUE (kind, sha256)
 );
 
-CREATE TABLE IF NOT EXISTS bookings (
+CREATE TABLE IF NOT EXISTS clearclose.bookings (
   reservation_no          text PRIMARY KEY,
   channel_reservation_no  text NOT NULL DEFAULT '',
   created_at              text NOT NULL DEFAULT '',
@@ -36,9 +40,9 @@ CREATE TABLE IF NOT EXISTS bookings (
   payments                text NOT NULL DEFAULT '[]'
 );
 
-CREATE INDEX IF NOT EXISTS idx_bookings_created_date ON bookings (created_date);
+CREATE INDEX IF NOT EXISTS idx_bookings_created_date ON clearclose.bookings (created_date);
 
-CREATE TABLE IF NOT EXISTS receipts (
+CREATE TABLE IF NOT EXISTS clearclose.receipts (
   id                      text PRIMARY KEY,
   source_row              integer NOT NULL DEFAULT 0,
   date                    text NOT NULL,
@@ -57,10 +61,10 @@ CREATE TABLE IF NOT EXISTS receipts (
   note                    text NOT NULL DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_receipts_reservation ON receipts (reservation_no);
-CREATE INDEX IF NOT EXISTS idx_receipts_method ON receipts (method);
+CREATE INDEX IF NOT EXISTS idx_receipts_reservation ON clearclose.receipts (reservation_no);
+CREATE INDEX IF NOT EXISTS idx_receipts_method ON clearclose.receipts (method);
 
-CREATE TABLE IF NOT EXISTS bank_statements (
+CREATE TABLE IF NOT EXISTS clearclose.bank_statements (
   code                  text PRIMARY KEY,
   method                text NOT NULL,
   source                text NOT NULL DEFAULT '',
@@ -79,9 +83,9 @@ CREATE TABLE IF NOT EXISTS bank_statements (
   control_delta_satang  bigint NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS bank_transactions (
+CREATE TABLE IF NOT EXISTS clearclose.bank_transactions (
   id              text PRIMARY KEY,
-  statement_code  text NOT NULL REFERENCES bank_statements (code) ON DELETE CASCADE,
+  statement_code  text NOT NULL REFERENCES clearclose.bank_statements (code) ON DELETE CASCADE,
   date            text NOT NULL,
   time            text NOT NULL DEFAULT '',
   description     text NOT NULL DEFAULT '',
@@ -94,12 +98,12 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
   row_no          integer NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions (statement_code, date);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON clearclose.bank_transactions (statement_code, date);
 
 -- One reconciliation run per upload. Keeping the resolved dataset alongside the
 -- normalised rows lets a review reopen exactly what the engine saw that day,
 -- even after a later upload replaces the source rows.
-CREATE TABLE IF NOT EXISTS reconciliation_runs (
+CREATE TABLE IF NOT EXISTS clearclose.reconciliation_runs (
   id               text PRIMARY KEY,
   period           text NOT NULL DEFAULT '',
   ruleset_version  text NOT NULL,
@@ -108,9 +112,9 @@ CREATE TABLE IF NOT EXISTS reconciliation_runs (
   dataset          text NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_created ON reconciliation_runs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_runs_created ON clearclose.reconciliation_runs (created_at DESC);
 
-CREATE TABLE IF NOT EXISTS audit_events (
+CREATE TABLE IF NOT EXISTS clearclose.audit_events (
   id           bigserial PRIMARY KEY,
   actor        text NOT NULL DEFAULT 'web',
   action       text NOT NULL,
@@ -120,4 +124,4 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at   text NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created ON clearclose.audit_events (created_at DESC);
