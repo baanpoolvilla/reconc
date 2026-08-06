@@ -82,41 +82,61 @@ export type Statement = {
   lines: StatementLine[];
 };
 
+export type GroupReceipt = {
+  id: string;
+  reservationNo: string;
+  guest: string;
+  roomType: string;
+  roomNumber: string;
+  channel: string;
+  method: string;
+  receiptDate: string;
+  checkIn: string;
+  checkOut: string;
+  bookingCreatedAt: string;
+  bookingCreatedDate: string;
+  bookingStatus: string;
+  bookingTotalSatang: number;
+  bookingPaidSatang: number;
+  bookingBalanceDueSatang: number;
+  bookingNights: number;
+  amountSatang: number;
+  allocatedSatang: number;
+  sourceRow: number;
+};
+
+export type GroupLine = {
+  id: string;
+  date: string;
+  time: string;
+  description: string;
+  channel: string;
+  detail: string;
+  amountSatang: number;
+  allocatedSatang: number;
+  balanceSatang: number;
+  balanceBeforeSatang: number;
+  page: number;
+  row: number;
+};
+
+export type RuleCheck = { id: string; label: string; left: string | number; right: string | number; passed: boolean };
+
 export type MatchGroup = {
   id: string;
   account: string;
   accountNo: string;
+  accountName: string;
+  statementSource: string;
   type: MatchType;
   score: number;
   date: string;
+  rulesPassed: RuleCheck[];
   receiptSatang: number;
   bankSatang: number;
   deltaSatang: number;
-  receipts: {
-    id: string;
-    reservationNo: string;
-    guest: string;
-    roomType: string;
-    method: string;
-    receiptDate: string;
-    bookingCreatedAt: string;
-    bookingCreatedDate: string;
-    bookingStatus: string;
-    bookingTotalSatang: number;
-    amountSatang: number;
-    sourceRow: number;
-  }[];
-  lines: {
-    id: string;
-    date: string;
-    time: string;
-    description: string;
-    channel: string;
-    detail: string;
-    amountSatang: number;
-    page: number;
-    row: number;
-  }[];
+  receipts: GroupReceipt[];
+  lines: GroupLine[];
 };
 
 export type ReconciliationException = {
@@ -169,7 +189,7 @@ export type Dataset = {
     generatedAt: string;
     period: string;
     rulesetVersion: string;
-    sources: { kind: string; name: string; rows: number }[];
+    sources: { kind: string; label?: string; name: string; rows: number }[];
   };
   bookings: Booking[];
   receipts: Receipt[];

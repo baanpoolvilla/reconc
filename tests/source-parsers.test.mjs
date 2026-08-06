@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { readWorkbook } from "../scripts/lib/xlsx.mjs";
-import { parseStatementPdf } from "../scripts/lib/statement.mjs";
+import { readWorkbook } from "../lib/parsers/xlsx.mjs";
+import { parseStatementPdf } from "../lib/parsers/statement.mjs";
 
 const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
 const files = readdirSync(dataDir);

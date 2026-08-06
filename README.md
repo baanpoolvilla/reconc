@@ -33,6 +33,29 @@
 ช่องทางรับเงินที่ไม่มี Statement ในโฟลเดอร์ `data/` (เช่น `Kbank-Posh`, OTA collect, เงินสด)
 จะถูกรายงานแยกเป็น **นอกขอบเขต** ไม่นับเป็นทั้งจับคู่สำเร็จและข้อยกเว้น
 
+## ฐานข้อมูลและการนำเข้าเอกสาร
+
+ระบบอ่านข้อมูลได้สองทาง และเลือกให้อัตโนมัติ
+
+| เงื่อนไข | แหล่งข้อมูล |
+|---|---|
+| ตั้ง `DATABASE_URL` | reconciliation run ล่าสุดใน **Neon Postgres** — คือสิ่งที่การอัปโหลดผ่านเว็บเขียนลงไป |
+| ไม่ได้ตั้ง | ชุดข้อมูลที่ build จาก `data/` ตอน build time |
+
+ตั้งค่าให้ใช้ฐานข้อมูล:
+
+1. สร้าง project ที่ [neon.tech](https://neon.tech) (free tier พอ) แล้วคัดลอก connection string
+2. Vercel → Settings → Environment Variables → เพิ่ม `DATABASE_URL`
+3. Redeploy — ระบบสร้างตารางเองอัตโนมัติในการเรียกครั้งแรก (`migrate()` เป็น idempotent)
+
+จากนั้นอัปโหลดเอกสารได้ที่หน้า **นำเข้าเอกสาร** เลือกได้ทีเดียวทั้งสี่ไฟล์
+ระบบดูจากชื่อไฟล์ว่าเป็นเอกสารชนิดใด แล้ว parse → เก็บลง Postgres → กระทบยอดใหม่ทั้งรอบ
+อัปโหลดเอกสารชนิดเดิมซ้ำจะ**แทนที่**ของเดิมทั้งชุด ไม่สะสมซ้ำ
+
+ตาราง: `documents`, `bookings`, `receipts`, `bank_statements`, `bank_transactions`,
+`reconciliation_runs`, `audit_events` — เงินเป็น integer สตางค์เสมอ ไม่ใช้ float
+และวันที่ทางบัญชีเก็บเป็น `text` รูป ISO เพื่อไม่ให้ timezone เลื่อนวัน
+
 ## ข้อมูลต้นทาง
 
 วางไฟล์ทั้งสี่ไว้ใน `data/` แล้วรัน `npm run data:build`
@@ -75,19 +98,37 @@
 ## โครงสร้าง
 
 ```
-data/                        ไฟล์ต้นฉบับ (แหล่งข้อมูลเดียวของระบบ)
-scripts/build-dataset.mjs    pipeline: data/ → lib/dataset.generated.json
-scripts/lib/                 ตัวอ่าน zip / xlsx / pdf / statement
+data/                        ไฟล์ต้นฉบับสำหรับ build (ไม่ commit)
+lib/parsers/                 zip · xlsx · pdf · statement · documents
+                             ทุกตัวรับ Buffer ล้วน ๆ จึงใช้ได้ทั้งตอน build และตอนอัปโหลด
 lib/reconciliation.mjs       engine การจับคู่ (ruleset v2.0.0)
-lib/dataset.ts               typed accessor + ตัวช่วยจัดรูปแบบเงินและวันที่
-app/page.tsx                 UI ทั้งหมด อ่านจาก dataset อย่างเดียว
+lib/dataset-builder.mjs      ประกอบเอกสารที่ parse แล้วเป็นชุดข้อมูลเดียว
+lib/db/                      schema.sql · client (Neon/PGlite) · repository
+lib/data-source.ts           เลือกว่าจะอ่านจาก Postgres หรือจาก build
+scripts/build-dataset.mjs    pipeline: data/ → lib/dataset.generated.json
+app/page.tsx                 server component โหลดข้อมูลแล้วส่งให้ workspace
+app/workspace.tsx            UI ทั้งหมด
+app/api/upload/route.ts      รับไฟล์ → parse → เก็บ → กระทบยอดใหม่
 app/api/dataset/route.ts     ส่งชุดข้อมูลออกเป็น JSON (`?section=` เพื่อตัดขนาด)
-tests/                       parser · engine · UI
+tests/                       parser · engine · database (PGlite) · UI
 ```
+
+เทสต์ฐานข้อมูลรันบน **PGlite** ซึ่งคือ Postgres จริงคอมไพล์เป็น WASM
+SQL ที่เทสต์จึงเป็นชุดเดียวกับที่รันบน Neon
 
 ## หน้าจอ
 
-แต่ละหน้าเปิดตรงได้ด้วย hash — `#overview` `#matching` `#exceptions` `#bookings` `#receipts` `#statements` `#rules`
+แต่ละหน้าเปิดตรงได้ด้วย hash — `#overview` `#matching` `#exceptions` `#bookings` `#statements` `#upload` `#rules`
+
+| หน้า | ใช้ทำอะไร |
+|---|---|
+| ภาพรวม | อัตราการจับคู่ · control total ของแต่ละบัญชี · สาเหตุที่จับคู่ไม่ได้ · ช่องทางนอกขอบเขต |
+| รายละเอียดการจับคู่ | ยอดไหนตรงกับยอดไหน ผ่านกฎข้อไหน มาจากไฟล์บรรทัดใด และมีผลต่อคำจองอย่างไร |
+| ข้อยกเว้น | ทุกกรณีที่จับคู่ไม่ได้ พร้อมเหตุผลและยอดที่ใกล้เคียงที่สุดในวันเดียวกัน |
+| รายการจอง | คำจองจากบัญชีแยกประเภท พร้อมเส้นทางของทุกงวดรับเงิน |
+| รายการเดินบัญชี | ทุกบรรทัดจาก Statement PDF พร้อมสถานะจับคู่รายบรรทัด |
+| นำเข้าเอกสาร | อัปโหลดเอกสารและสั่งกระทบยอดใหม่ |
+| กฎการจับคู่ | กฎที่ใช้ · เอกสารที่อยู่ในระบบ · ตารางตรวจ control total |
 
 ## Deploy บน Vercel
 
