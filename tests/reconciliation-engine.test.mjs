@@ -11,7 +11,7 @@ import {
 
 const statement = {
   code: "885",
-  accountNo: "199-1-33588-5",
+  accountNo: "000-0-00000-0",
   method: "KbankGL885",
   lines: [
     { id: "L1", date: "2026-07-10", time: "10:00", description: "รับโอนเงิน", channel: "GSB", detail: "", direction: "credit", amountSatang: 600000 },

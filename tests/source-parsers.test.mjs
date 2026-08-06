@@ -34,11 +34,14 @@ test("the collection report exposes date, method, amount and reservation columns
   assert.ok(sheet.rows.length > 100);
 });
 
-for (const [prefix, accountNo, credits, debits] of [["885", "199-1-33588-5", 51, 1], ["987", "025-3-66398-7", 110, 12]]) {
+// Expected counts come from the summary KBank prints on page 1 of each statement.
+// The account numbers themselves are deliberately not asserted here — they are
+// customer data and this file is committed; the format check below is enough.
+for (const [prefix, credits, debits] of [["885", 51, 1], ["987", 110, 12]]) {
   test(`statement ${prefix} parses and its control total balances`, () => {
     const statement = parseStatementPdf(find((file) => file.startsWith(prefix) && file.endsWith(".pdf")));
 
-    assert.equal(statement.accountNo, accountNo);
+    assert.match(statement.accountNo, /^\d{3}-\d-\d{5}-\d$/, "account number was not parsed");
     assert.equal(statement.creditCount, credits, "credit count disagrees with the PDF summary");
     assert.equal(statement.debitCount, debits, "debit count disagrees with the PDF summary");
     // opening + credits − debits must land exactly on the printed closing balance.
