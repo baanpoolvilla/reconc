@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Metric, PageHeading, PanelTitle, Pill, type Tone } from "./ui";
+import SettingsView from "./settings-view";
 import {
   type AccountResult,
   type Booking,
@@ -14,9 +16,20 @@ import {
   thaiDateTime,
   thaiMonthLabel,
 } from "../lib/dataset";
+import {
+  type AppSettings,
+  type EffectiveDataset,
+  type ExcludedReceipt,
+  EXCLUSION_SCOPE_LABEL,
+  applySettings,
+  getDefaultSettings,
+  getSettings,
+  resetSettings,
+  setSettings,
+  subscribeSettings,
+} from "../lib/settings";
 
-type ViewId = "overview" | "ledger" | "matching" | "exceptions" | "bookings" | "statements" | "upload" | "rules";
-type Tone = "green" | "blue" | "amber" | "red" | "slate";
+type ViewId = "overview" | "ledger" | "matching" | "exceptions" | "bookings" | "statements" | "upload" | "rules" | "settings";
 
 const reasonTone: Record<string, Tone> = {
   MISSING_BOOKING: "red",
@@ -51,7 +64,10 @@ const sourceKindToDocument: Record<string, string> = {
 // ── shared context ────────────────────────────────────────────────────────────
 
 type WorkspaceValue = {
+  /** ชุดข้อมูลหลังใช้การตั้งค่าแล้ว — ทุกหน้าจออ่านจากตัวนี้ */
   dataset: Dataset;
+  effective: EffectiveDataset;
+  settings: AppSettings;
   hasData: boolean;
   go: (view: ViewId) => void;
 };
@@ -60,22 +76,6 @@ const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 const useWorkspace = () => useContext(WorkspaceContext) as WorkspaceValue;
 
 // ── primitives ────────────────────────────────────────────────────────────────
-
-function Pill({ tone = "slate", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={`pill ${tone}`}>{children}</span>;
-}
-
-function PanelTitle({ kicker, title, action }: { kicker: string; title: string; action?: ReactNode }) {
-  return <div className="panel-title"><span><small>{kicker}</small><h2>{title}</h2></span>{action}</div>;
-}
-
-function Metric({ label, value, detail, tone = "slate", badge }: { label: string; value: string; detail: string; tone?: Tone; badge?: string }) {
-  return <article className="metric-card"><div><span>{label}</span>{badge && <Pill tone={tone}>{badge}</Pill>}</div><strong>{value}</strong><p>{detail}</p><i className={`metric-line ${tone}`} /></article>;
-}
-
-function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
-  return <div className="page-heading"><div><span className="page-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>;
-}
 
 function RuleBanner() {
   return (
@@ -96,13 +96,22 @@ function RuleBanner() {
 
 // ── shell ─────────────────────────────────────────────────────────────────────
 
-export default function Workspace({ dataset, source, databaseConfigured, loadError }: {
+export default function Workspace({ dataset: rawDataset, source, databaseConfigured, loadError }: {
   dataset: Dataset;
   source: string;
   databaseConfigured: boolean;
   loadError?: string;
 }) {
   const [active, setActive] = useState<ViewId>("overview");
+
+  // ค่าที่ผู้ใช้ตั้งไว้อยู่ใน localStorage ซึ่งเป็นแหล่งข้อมูลนอก React
+  // ฝั่งเซิร์ฟเวอร์และตอน hydrate ใช้ค่าตั้งต้น จึงไม่มี hydration mismatch
+  const settings: AppSettings = useSyncExternalStore(subscribeSettings, getSettings, getDefaultSettings);
+
+  // การตั้งค่าไม่แก้เอกสารต้นทาง แต่คัดรายการออกแล้วกระทบยอดใหม่ทั้งรอบ
+  const effective = useMemo(() => applySettings(rawDataset, settings), [rawDataset, settings]);
+  const dataset = effective.dataset;
+
   const { meta, statements, reconciliation } = dataset;
   const { groups, exceptions, summary } = reconciliation;
   const hasData = meta.sources.length > 0;
@@ -120,7 +129,8 @@ export default function Workspace({ dataset, source, databaseConfigured, loadErr
     ] },
     { label: "ระบบ", items: [
       { id: "upload", label: "นำเข้าเอกสาร", icon: "↑" },
-      { id: "rules", label: "กฎการจับคู่", icon: "⚙" },
+      { id: "rules", label: "กฎการจับคู่", icon: "≡" },
+      { id: "settings", label: "การตั้งค่า", icon: "⚙", badge: effective.excluded.length ? String(effective.excluded.length) : undefined },
     ] },
   ];
 
@@ -148,7 +158,7 @@ export default function Workspace({ dataset, source, databaseConfigured, loadErr
   const storageLabel = databaseConfigured ? "NEON POSTGRES" : "BUILD-TIME DATA/";
 
   return (
-    <WorkspaceContext.Provider value={{ dataset, hasData, go }}>
+    <WorkspaceContext.Provider value={{ dataset, effective, settings, hasData, go }}>
       <div className="app-shell">
         <aside className="sidebar">
           <button className="brand" onClick={() => go("overview")}>
@@ -195,7 +205,18 @@ export default function Workspace({ dataset, source, databaseConfigured, loadErr
             {loadError && <div className="load-error"><span>!</span><p><b>อ่านข้อมูลจากฐานข้อมูลไม่สำเร็จ</b><small className="mono">{loadError}</small></p></div>}
             {active === "upload" && <Upload databaseConfigured={databaseConfigured} />}
             {active === "rules" && <Rules />}
-            {!hasData && active !== "upload" && active !== "rules" && <NoSourceDocuments />}
+            {active === "settings" && (
+              <SettingsView
+                rawDataset={rawDataset}
+                effective={effective}
+                settings={settings}
+                onChange={setSettings}
+                onReset={resetSettings}
+                source={source}
+                databaseConfigured={databaseConfigured}
+              />
+            )}
+            {!hasData && active !== "upload" && active !== "rules" && active !== "settings" && <NoSourceDocuments />}
             {hasData && active === "overview" && <Overview />}
             {hasData && active === "ledger" && <Ledger />}
             {hasData && active === "matching" && <Matching />}
@@ -242,6 +263,27 @@ function NoSourceDocuments() {
 
 // ── overview ──────────────────────────────────────────────────────────────────
 
+/** บอกให้เห็นตั้งแต่หน้าแรกว่าตัวเลขที่กำลังอ่านอยู่ถูกกรองอะไรออกไปบ้าง */
+function ExclusionBanner() {
+  const { effective, go } = useWorkspace();
+  if (!effective.excluded.length) return null;
+
+  return (
+    <div className="exclusion-banner">
+      <span className="exclusion-banner-mark">⊘</span>
+      <div>
+        <b>ตัวเลขทุกหน้าไม่รวมรายการที่ถูกตัดออกตามการตั้งค่า</b>
+        <p>
+          ตัดออก <strong>{effective.excluded.length}</strong> รายการ รวม <strong>{baht(effective.excludedSatang)}</strong>
+          <span>·</span>
+          {effective.buckets.map((bucket) => `${EXCLUSION_SCOPE_LABEL[bucket.scope]} ${bucket.value}`).join(" · ")}
+        </p>
+      </div>
+      <button className="text-button" onClick={() => go("settings")}>แก้ไขการตั้งค่า →</button>
+    </div>
+  );
+}
+
 function Overview() {
   const { dataset, go } = useWorkspace();
   const { receipts, reconciliation } = dataset;
@@ -279,6 +321,7 @@ function Overview() {
         }
       />
       <RuleBanner />
+      <ExclusionBanner />
 
       <section className="metrics-grid">
         <Metric label="ยอดรับเงินทั้งรอบ" value={baht(receiptTotal)} detail={`${receipts.length} รายการจากรายงานการรับเงิน`} tone="blue" />
@@ -354,19 +397,21 @@ function AccountCard({ account, onOpen }: { account: AccountResult; onOpen: () =
 type LedgerRow = {
   receipt: Receipt;
   booking?: Booking;
-  status: "matched" | "exception" | "outofscope";
+  status: "matched" | "exception" | "outofscope" | "excluded";
   group?: MatchGroup;
   exception?: ReconciliationException;
+  excludedBy?: ExcludedReceipt["excludedBy"];
   firstOfBooking: boolean;
   rowsInBooking: number;
 };
 
 function Ledger() {
-  const { dataset } = useWorkspace();
+  const { dataset, effective, settings, go } = useWorkspace();
   const { bookings, receipts, reconciliation } = dataset;
   const [channelFilter, setChannelFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const showExcluded = settings.display.showExcludedRows && effective.excluded.length > 0;
 
   const rows = useMemo<LedgerRow[]>(() => {
     const bookingIndex = new Map(bookings.map((booking) => [booking.reservationNo, booking]));
@@ -374,10 +419,12 @@ function Ledger() {
     for (const group of reconciliation.groups) for (const item of group.receipts) groupByReceipt.set(item.id, group);
     const exceptionByReceipt = new Map<string, ReconciliationException>();
     for (const exception of reconciliation.exceptions) if (exception.receiptId) exceptionByReceipt.set(exception.receiptId, exception);
+    const excludedById = new Map(effective.excluded.map((item) => [item.id, item.excludedBy]));
 
     // Sort so every payment of a booking sits together, newest booking first —
     // the order an accountant reads a ledger in.
-    const sorted = [...receipts].sort((a, b) => {
+    const source = showExcluded ? [...receipts, ...effective.excluded] : receipts;
+    const sorted = [...source].sort((a, b) => {
       const left = bookingIndex.get(a.reservationNo)?.createdAt ?? a.date;
       const right = bookingIndex.get(b.reservationNo)?.createdAt ?? b.date;
       return right.localeCompare(left) || a.reservationNo.localeCompare(b.reservationNo) || a.date.localeCompare(b.date);
@@ -387,20 +434,22 @@ function Ledger() {
     for (const receipt of sorted) counts.set(receipt.reservationNo, (counts.get(receipt.reservationNo) ?? 0) + 1);
 
     return sorted.map((receipt, index) => {
-      const group = groupByReceipt.get(receipt.id);
-      const exception = exceptionByReceipt.get(receipt.id);
+      const excludedBy = excludedById.get(receipt.id);
+      const group = excludedBy ? undefined : groupByReceipt.get(receipt.id);
+      const exception = excludedBy ? undefined : exceptionByReceipt.get(receipt.id);
       const firstOfBooking = index === 0 || sorted[index - 1].reservationNo !== receipt.reservationNo;
       return {
         receipt,
         booking: bookingIndex.get(receipt.reservationNo),
-        status: group ? "matched" : exception ? "exception" : "outofscope",
+        status: excludedBy ? "excluded" : group ? "matched" : exception ? "exception" : "outofscope",
         group,
         exception,
+        excludedBy,
         firstOfBooking,
         rowsInBooking: counts.get(receipt.reservationNo) ?? 1,
       };
     });
-  }, [bookings, receipts, reconciliation]);
+  }, [bookings, receipts, reconciliation, effective.excluded, showExcluded]);
 
   const channels = useMemo(() => {
     const totals = new Map<string, number>();
@@ -416,11 +465,13 @@ function Ledger() {
     return haystack.toLowerCase().includes(query.trim().toLowerCase());
   });
 
+  // แถวที่ถูกตัดออกแสดงเพื่อการตรวจสอบเท่านั้น จึงไม่ถูกนับรวมในยอดใด ๆ
   const totals = visible.reduce((acc, row) => ({
-    receipt: acc.receipt + row.receipt.amountSatang,
+    receipt: acc.receipt + (row.status === "excluded" ? 0 : row.receipt.amountSatang),
     matched: acc.matched + (row.status === "matched" ? row.receipt.amountSatang : 0),
     unmatched: acc.unmatched + (row.status === "exception" ? row.receipt.amountSatang : 0),
-  }), { receipt: 0, matched: 0, unmatched: 0 });
+    excluded: acc.excluded + (row.status === "excluded" ? row.receipt.amountSatang : 0),
+  }), { receipt: 0, matched: 0, unmatched: 0, excluded: 0 });
 
   const exportCsv = () => {
     // Same columns as the screen, in the same order, grouped by source document.
@@ -442,8 +493,8 @@ function Ledger() {
         money(row.booking?.balanceDueSatang ?? 0),
         row.receipt.date, row.receipt.checkIn, row.receipt.checkOut, money(row.receipt.amountSatang), row.receipt.method,
         line?.date ?? "", line?.time ?? "", line ? money(line.amountSatang) : "",
-        row.status === "matched" ? "ตรง" : row.status === "exception" ? "ไม่ตรง" : "นอกขอบเขต",
-        row.group?.id ?? row.exception?.id ?? "",
+        row.status === "matched" ? "ตรง" : row.status === "exception" ? "ไม่ตรง" : row.status === "excluded" ? "ถูกตัดออกตามการตั้งค่า" : "นอกขอบเขต",
+        row.group?.id ?? row.exception?.id ?? (row.excludedBy ? `${EXCLUSION_SCOPE_LABEL[row.excludedBy.scope]}: ${row.excludedBy.value}` : ""),
       ].map(escape).join(",");
     });
 
@@ -474,7 +525,7 @@ function Ledger() {
       <section className="panel data-panel">
         <div className="statement-toolbar">
           <div className="tabs wrap">
-            {[["all", "ทุกสถานะ"], ["matched", "กระทบตรง"], ["exception", "ไม่ตรง"], ["outofscope", "นอกขอบเขต"]].map(([value, label]) => (
+            {[["all", "ทุกสถานะ"], ["matched", "กระทบตรง"], ["exception", "ไม่ตรง"], ["outofscope", "นอกขอบเขต"], ...(showExcluded ? [["excluded", "ถูกตัดออก"]] : [])].map(([value, label]) => (
               <button key={value} className={statusFilter === value ? "active" : ""} onClick={() => setStatusFilter(value)}>
                 {label} <span>{value === "all" ? rows.length : rows.filter((row) => row.status === value).length}</span>
               </button>
@@ -493,8 +544,16 @@ function Ledger() {
           <span><i className="ring-green" /> กระทบยอดตรง — วันเดียวกันและยอดตรงพอดี</span>
           <span><i className="ring-red" /> ไม่ตรง — ดูเหตุผลได้ที่หน้าข้อยกเว้น</span>
           <span><i className="ring-grey" /> นอกขอบเขต — ช่องทางที่ยังไม่มี Statement</span>
+          {showExcluded && <span><i className="ring-grey" /> ถูกตัดออก — ไม่ถูกนับในยอดใด ๆ</span>}
           <button className="secondary-button" onClick={exportCsv}>⇩ ส่งออก CSV</button>
         </div>
+
+        {effective.excluded.length > 0 && !showExcluded && (
+          <p className="table-note ledger-exclusion-note">
+            ตารางนี้ไม่รวม {effective.excluded.length} รายการที่ถูกตัดออกตามการตั้งค่า ({baht(effective.excludedSatang)})
+            <button className="text-button" onClick={() => go("settings")}>ดูหรือแก้ไขการตั้งค่า →</button>
+          </p>
+        )}
 
         <div className="responsive-table scroll-table">
           <table className="ledger-table">
@@ -525,7 +584,7 @@ function Ledger() {
               </tr>
             </thead>
             <tbody>
-              {visible.slice(0, 300).map((row) => {
+              {visible.slice(0, settings.display.ledgerRowLimit).map((row) => {
                 const line = row.group?.lines[0];
                 // Booking columns print once per booking, like a merged cell.
                 const own = row.firstOfBooking;
@@ -555,6 +614,7 @@ function Ledger() {
                       {row.status === "matched" && <><Pill tone="green">{row.group?.type}</Pill><small className="block mono">{row.group?.id}</small></>}
                       {row.status === "exception" && <><Pill tone="red">ไม่ตรง</Pill><small className="block mono">{row.exception?.reason}</small></>}
                       {row.status === "outofscope" && <Pill>นอกขอบเขต</Pill>}
+                      {row.status === "excluded" && row.excludedBy && <><Pill>ถูกตัดออก</Pill><small className="block">{EXCLUSION_SCOPE_LABEL[row.excludedBy.scope]} · {row.excludedBy.value}</small></>}
                     </td>
                   </tr>
                 );
@@ -567,12 +627,13 @@ function Ledger() {
                 <td colSpan={2}>
                   <span className="foot-split"><i className="ring-green" />ตรง {baht(totals.matched)}</span>
                   <span className="foot-split"><i className="ring-red" />ไม่ตรง {baht(totals.unmatched)}</span>
+                  {totals.excluded > 0 && <span className="foot-split"><i className="ring-grey" />ตัดออก {baht(totals.excluded)}</span>}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
-        {visible.length > 300 && <p className="table-note">แสดง 300 จาก {visible.length.toLocaleString("en-US")} รายการ · ใช้ตัวกรองหรือส่งออก CSV เพื่อดูทั้งหมด</p>}
+        {visible.length > settings.display.ledgerRowLimit && <p className="table-note">แสดง {settings.display.ledgerRowLimit.toLocaleString("en-US")} จาก {visible.length.toLocaleString("en-US")} รายการ · เพิ่มจำนวนแถวได้ที่หน้าการตั้งค่า หรือส่งออก CSV เพื่อดูทั้งหมด</p>}
         {!visible.length && <div className="empty-state"><span>⌕</span><h3>ไม่พบรายการที่ตรงกับตัวกรอง</h3><p>ลองล้างคำค้นหาหรือเลือกทุกช่องทาง</p></div>}
       </section>
     </>
@@ -1375,13 +1436,28 @@ function Upload({ databaseConfigured }: { databaseConfigured: boolean }) {
 // ── rules ─────────────────────────────────────────────────────────────────────
 
 function Rules() {
-  const { dataset, hasData } = useWorkspace();
+  const { dataset, hasData, settings, go } = useWorkspace();
   const { accounts } = dataset.reconciliation;
+  const shapeOff = [
+    !settings.matching.allowManyToOne ? "R04" : "",
+    !settings.matching.allowOneToMany ? "R05" : "",
+  ].filter(Boolean);
 
   return (
     <>
-      <PageHeading eyebrow={`Ruleset v${dataset.reconciliation.rulesetVersion}`} title="กฎการจับคู่" description="กฎที่ระบบใช้ และเอกสารต้นทางที่อ่านเข้ามา" action={<Pill tone="green">Active</Pill>} />
+      <PageHeading
+        eyebrow={`Ruleset v${dataset.reconciliation.rulesetVersion}`}
+        title="กฎการจับคู่"
+        description="กฎที่ระบบใช้ และเอกสารต้นทางที่อ่านเข้ามา"
+        action={
+          <div className="rule-actions">
+            <Pill tone={shapeOff.length ? "amber" : "green"}>{shapeOff.length ? `ปิดอยู่ ${shapeOff.join(" · ")}` : "Active"}</Pill>
+            <button className="text-button" onClick={() => go("settings")}>ปรับที่หน้าการตั้งค่า →</button>
+          </div>
+        }
+      />
       <RuleBanner />
+      <ExclusionBanner />
 
       <section className="rules-grid">
         <div className="panel">
@@ -1391,14 +1467,14 @@ function Rules() {
               ["R01", "วันที่สร้างคำจอง = วันที่เงินเข้า Statement", "เทียบเป็นวันปฏิทินเดียวกัน ไม่มี date window", "BLOCK"],
               ["R02", "ยอดต้องตรงกันพอดี", "ผลต่างต้องเป็น ฿0.00 ไม่มี tolerance", "BLOCK"],
               ["R03", "จับคู่ 1:1", "หนึ่งรายการรับเงิน = หนึ่งยอดเงินเข้า", "100"],
-              ["R04", "จับคู่ N:1", "ผลรวมหลายรายการรับเงินวันเดียวกัน = หนึ่งยอดเงินเข้า", "95"],
-              ["R05", "จับคู่ 1:N", "หนึ่งรายการรับเงิน = ผลรวมหลายยอดเงินเข้าวันเดียวกัน", "92"],
+              ["R04", "จับคู่ N:1", `ผลรวมสูงสุด ${settings.matching.maxGroupSize} รายการรับเงินวันเดียวกัน = หนึ่งยอดเงินเข้า`, "95"],
+              ["R05", "จับคู่ 1:N", `หนึ่งรายการรับเงิน = ผลรวมสูงสุด ${settings.matching.maxGroupSize} ยอดเงินเข้าวันเดียวกัน`, "92"],
               ["R06", "ที่เหลือเป็นข้อยกเว้น", "ไม่ปรับยอด ไม่ขยายวัน ไม่แก้ข้อมูลต้นฉบับ", "BLOCK"],
             ].map((rule) => (
-              <div key={rule[0]}>
+              <div key={rule[0]} className={shapeOff.includes(rule[0]) ? "rule-off" : ""}>
                 <span>{rule[0]}</span>
                 <p><b>{rule[1]}</b><small>{rule[2]}</small></p>
-                <em className={rule[3] === "BLOCK" ? "block" : ""}>{rule[3]}</em>
+                <em className={rule[3] === "BLOCK" ? "block" : ""}>{shapeOff.includes(rule[0]) ? "ปิดอยู่" : rule[3]}</em>
               </div>
             ))}
           </div>

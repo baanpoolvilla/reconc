@@ -71,9 +71,10 @@ test("deploys and runs before any source document is loaded", async () => {
   assert.match(builder, /buildDataset\(\[\]\)/);
   // … a partly filled one must still fail loudly.
   assert.match(builder, /มีเอกสารไม่ครบ/);
-  // … and the UI must swap in a status screen instead of a wall of zeros.
   assert.match(workspace, /const hasData = meta\.sources\.length > 0/);
-  assert.match(workspace, /!hasData && active !== "upload" && active !== "rules" && <NoSourceDocuments/);
+  // … and the UI must swap in a status screen instead of a wall of zeros, except
+  // on the pages that are useful with no documents loaded at all.
+  assert.match(workspace, /!hasData && active !== "upload" && active !== "rules" && active !== "settings" && <NoSourceDocuments/);
 });
 
 test("uploading requires a database and says so when there is none", async () => {
