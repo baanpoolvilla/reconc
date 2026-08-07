@@ -5,7 +5,8 @@ import generated from "./dataset.generated.json";
 // KBank statement PDFs, the collection report and the ledger export.
 // There is no demo, seeded or hand-written data anywhere in the app.
 
-export type MatchType = "1:1" | "N:1" | "1:N";
+/** MANUAL และ OTA คือกลุ่มที่คนกดยืนยันเอง ไม่ใช่กฎอัตโนมัติ */
+export type MatchType = "1:1" | "N:1" | "1:N" | "MANUAL" | "OTA";
 export type Severity = "high" | "medium" | "low";
 
 export type Booking = {
@@ -102,6 +103,8 @@ export type GroupReceipt = {
   bookingNights: number;
   amountSatang: number;
   allocatedSatang: number;
+  /** วันของแถวนี้ห่างจากวันที่เงินเข้ากี่วัน — เป็นบวกเมื่อรับเงินหลังเงินเข้า */
+  dayGapToBank: number;
   sourceRow: number;
 };
 
@@ -122,6 +125,18 @@ export type GroupLine = {
 
 export type RuleCheck = { id: string; label: string; left: string | number; right: string | number; passed: boolean };
 
+/** ร่องรอยของคนที่กดยืนยันกลุ่มนี้ — มีเฉพาะกลุ่มที่ไม่ได้มาจากกฎอัตโนมัติ */
+export type GroupDecision = {
+  id: string;
+  kind: "MANUAL" | "SETTLEMENT";
+  reason: string;
+  reasonLabel: string;
+  note: string;
+  decidedBy: string;
+  decidedAt: string;
+  differenceSatang: number;
+};
+
 export type MatchGroup = {
   id: string;
   account: string;
@@ -132,6 +147,7 @@ export type MatchGroup = {
   score: number;
   date: string;
   rulesPassed: RuleCheck[];
+  decision: GroupDecision | null;
   receiptSatang: number;
   bankSatang: number;
   deltaSatang: number;
@@ -150,12 +166,16 @@ export type ReconciliationException = {
   guest: string;
   receiptId: string;
   receiptDate: string;
+  receiptMethod: string;
   receiptSatang: number;
   bookingCreatedAt: string;
   bookingCreatedDate: string;
   bookingStatus: string;
   bankLineId: string;
   bankDate: string;
+  bankTime: string;
+  bankDetail: string;
+  bankChannel: string;
   bankSatang: number;
   deltaSatang: number;
   candidates: { id: string; time: string; amountSatang: number; detail: string; deltaSatang: number }[];
@@ -200,6 +220,8 @@ export type Dataset = {
     groups: MatchGroup[];
     exceptions: ReconciliationException[];
     outOfScope: { method: string; count: number; amountSatang: number }[];
+    /** การตัดสินใจที่อ้างถึงแถวซึ่งไม่มีอยู่ในเอกสารชุดปัจจุบันแล้ว */
+    staleDecisions: { id: string; receiptIds: string[]; bankLineIds: string[]; bankSatang: number; staleReason: string }[];
     summary: {
       inScopeReceipts: number;
       matchedReceipts: number;
@@ -209,6 +231,10 @@ export type Dataset = {
       matchedSatang: number;
       unexplainedReceiptSatang: number;
       unexplainedBankSatang: number;
+      decidedGroups: number;
+      decidedReceipts: number;
+      acceptedDifferenceSatang: number;
+      staleDecisions: number;
       controlBalanced: boolean;
     };
   };

@@ -18,6 +18,10 @@ export type LoadedDataset = {
   dataset: Dataset;
   source: DatasetSource;
   databaseConfigured: boolean;
+  /** true เมื่อการตั้งค่าและการตัดสินใจถูกเก็บบนเซิร์ฟเวอร์ ทุกเครื่องจึงเห็นตรงกัน */
+  online: boolean;
+  settings: unknown;
+  decisions: unknown[];
   error?: string;
 };
 
@@ -32,9 +36,11 @@ const emptyDataset: Dataset = {
     groups: [],
     exceptions: [],
     outOfScope: [],
+    staleDecisions: [],
     summary: {
       inScopeReceipts: 0, matchedReceipts: 0, matchedGroups: 0, exceptionCount: 0,
-      matchRate: 0, matchedSatang: 0, unexplainedReceiptSatang: 0, unexplainedBankSatang: 0, controlBalanced: true,
+      matchRate: 0, matchedSatang: 0, unexplainedReceiptSatang: 0, unexplainedBankSatang: 0,
+      decidedGroups: 0, decidedReceipts: 0, acceptedDifferenceSatang: 0, staleDecisions: 0, controlBalanced: true,
     },
   },
 };
@@ -44,25 +50,45 @@ export async function loadDataset(): Promise<LoadedDataset> {
 
   if (!databaseConfigured) {
     const dataset = buildTimeDataset.meta.sources.length ? buildTimeDataset : emptyDataset;
-    return { dataset, source: buildTimeDataset.meta.sources.length ? "build" : "empty", databaseConfigured: false };
+    return {
+      dataset,
+      source: buildTimeDataset.meta.sources.length ? "build" : "empty",
+      databaseConfigured: false,
+      online: false,
+      settings: null,
+      decisions: [],
+    };
   }
 
   try {
-    const [{ getDb, ensureSchema }, { latestDataset }] = await Promise.all([
+    const [{ getDb, ensureSchema }, { latestDataset, listDecisions, loadStoredSettings }] = await Promise.all([
       import("./db/client.mjs"),
       import("./db/repository.mjs"),
     ]);
     const db = await getDb();
     await ensureSchema(db);
-    const stored = (await latestDataset(db)) as Dataset | null;
-    if (stored) return { dataset: stored, source: "database", databaseConfigured: true };
-    return { dataset: emptyDataset, source: "empty", databaseConfigured: true };
+    const [stored, settings, decisions] = await Promise.all([
+      latestDataset(db) as Promise<Dataset | null>,
+      loadStoredSettings(db),
+      listDecisions(db),
+    ]);
+    return {
+      dataset: stored ?? emptyDataset,
+      source: stored ? "database" : "empty",
+      databaseConfigured: true,
+      online: true,
+      settings,
+      decisions,
+    };
   } catch (error) {
     // Surface the failure rather than quietly serving stale build-time numbers.
     return {
       dataset: emptyDataset,
       source: "empty",
       databaseConfigured: true,
+      online: false,
+      settings: null,
+      decisions: [],
       error: error instanceof Error ? error.message : "ต่อฐานข้อมูลไม่สำเร็จ",
     };
   }

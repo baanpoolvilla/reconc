@@ -1,23 +1,26 @@
 import type { Booking, Dataset, Receipt } from "./dataset";
 import * as core from "./settings-core.mjs";
+import * as engine from "./reconciliation.mjs";
 
-// หน้ากากที่ใส่ type ให้ตรรกะใน settings-core.mjs พร้อมส่วนที่ทำงานได้เฉพาะบน
-// เบราว์เซอร์ (การจำค่าที่ผู้ใช้ตั้งไว้) — เหมือนที่ dataset.ts ทำกับ reconciliation.mjs
+// หน้ากากที่ใส่ type ให้ตรรกะใน settings-core.mjs / settlements.mjs
+// เหมือนที่ dataset.ts ทำกับ reconciliation.mjs
 
 export const SETTINGS_STORAGE_KEY = "clearclose.settings.v1";
+export const DECISIONS_STORAGE_KEY = "clearclose.decisions.v1";
 export const SETTINGS_VERSION: number = core.SETTINGS_VERSION;
 
 export type MatchOptions = { maxGroupSize: number; allowManyToOne: boolean; allowOneToMany: boolean };
 
+export type SettlementSettings = {
+  enabled: boolean;
+  windowDays: number;
+  maxFeeRate: number;
+  patterns: string[];
+  otaMethods: string[];
+};
+
 export type ExclusionScope =
-  | "property"
-  | "group"
-  | "method"
-  | "channel"
-  | "bookingStatus"
-  | "keyword"
-  | "refund"
-  | "amount";
+  | "property" | "group" | "method" | "channel" | "bookingStatus" | "keyword" | "refund" | "amount";
 
 export type AppSettings = {
   version: number;
@@ -34,10 +37,60 @@ export type AppSettings = {
     maxAmountSatang: number | null;
   };
   matching: MatchOptions;
-  display: {
-    ledgerRowLimit: number;
-    showExcludedRows: boolean;
-  };
+  settlement: SettlementSettings;
+  display: { ledgerRowLimit: number; showExcludedRows: boolean };
+};
+
+export type DecisionKind = "MANUAL" | "SETTLEMENT";
+export type DecisionReason = "COMMISSION" | "BANK_FEE" | "ROUNDING" | "DISCOUNT" | "EXTRA_CHARGE" | "OTHER";
+
+export type MatchDecision = {
+  id: string;
+  kind: DecisionKind;
+  receiptIds: string[];
+  bankLineIds: string[];
+  receiptSatang: number;
+  bankSatang: number;
+  differenceSatang: number;
+  reason: DecisionReason;
+  note: string;
+  decidedBy: string;
+  decidedAt: string;
+  staleReason?: "ROWS_GONE" | "ALREADY_USED" | "EMPTY";
+};
+
+export type SettlementCandidate = {
+  id: string;
+  reservationNo: string;
+  guest: string;
+  method: string;
+  channel: string;
+  date: string;
+  checkIn: string;
+  checkOut: string;
+  roomType: string;
+  group: string;
+  amountSatang: number;
+  dayGap: number;
+  selected: boolean;
+};
+
+export type SettlementProposal = {
+  id: string;
+  lineId: string;
+  account: string;
+  date: string;
+  time: string;
+  description: string;
+  channel: string;
+  detail: string;
+  netSatang: number;
+  grossSatang: number;
+  feeSatang: number;
+  feeRate: number;
+  status: "READY" | "FEE_HIGH" | "SHORT" | "EMPTY";
+  candidates: SettlementCandidate[];
+  selectedIds: string[];
 };
 
 export type ExclusionHit = { scope: ExclusionScope; value: string };
@@ -46,15 +99,11 @@ export type ExclusionBucket = ExclusionHit & { count: number; amountSatang: numb
 
 export type Facet = { value: string; count: number; amountSatang: number; note?: string };
 export type Facets = {
-  properties: Facet[];
-  groups: Facet[];
-  methods: Facet[];
-  channels: Facet[];
-  bookingStatuses: Facet[];
+  properties: Facet[]; groups: Facet[]; methods: Facet[]; channels: Facet[]; bookingStatuses: Facet[];
 };
 
 export type EffectiveDataset = {
-  /** ชุดข้อมูลที่ทุกหน้าจอใช้ — รายการที่ถูกตัดออกแล้ว และกระทบยอดใหม่เรียบร้อย */
+  /** ชุดข้อมูลที่ทุกหน้าจอใช้ — ตัดรายการที่ไม่เอาออก และกระทบยอดใหม่เรียบร้อย */
   dataset: Dataset;
   excluded: ExcludedReceipt[];
   excludedSatang: number;
@@ -62,86 +111,178 @@ export type EffectiveDataset = {
   sourceReceiptCount: number;
   sourceReceiptSatang: number;
   activeRuleCount: number;
+  settlements: SettlementProposal[];
 };
 
 export const DEFAULT_SETTINGS = core.DEFAULT_SETTINGS as AppSettings;
 export const EXCLUSION_SCOPE_LABEL = core.EXCLUSION_SCOPE_LABEL as Record<ExclusionScope, string>;
+export const DECISION_REASONS = engine.DECISION_REASONS as Record<DecisionReason, { label: string; detail: string }>;
 
 export const propertyOf = core.propertyOf as (group: string) => string;
 export const normalizeSettings = core.normalizeSettings as (raw: unknown) => AppSettings;
 export const countActiveRules = core.countActiveRules as (settings: AppSettings) => number;
 export const describeFacets = core.describeFacets as (dataset: Dataset) => Facets;
-export const applySettings = core.applySettings as (dataset: Dataset, settings: AppSettings) => EffectiveDataset;
 export const receiptExclusion = core.receiptExclusion as (
-  receipt: Receipt,
-  settings: AppSettings,
-  booking?: Booking,
+  receipt: Receipt, settings: AppSettings, booking?: Booking,
 ) => ExclusionHit | null;
+export const applySettings = core.applySettings as (
+  dataset: Dataset, settings: AppSettings, decisions?: MatchDecision[],
+) => EffectiveDataset;
 
-// ── การจำค่าที่ผู้ใช้ตั้งไว้ ─────────────────────────────────────────────────
+export const dayGap = engine.dayGap as (left: string, right: string) => number;
+
+// ── ที่เก็บค่า ───────────────────────────────────────────────────────────────
 //
-// localStorage เป็นแหล่งข้อมูลนอก React จึงใช้เป็น external store แล้วให้หน้าจอ
-// อ่านผ่าน useSyncExternalStore ฝั่งเซิร์ฟเวอร์และตอน hydrate จะได้ค่าตั้งต้นเสมอ
-// จึงไม่มีทางเกิด hydration mismatch และแท็บอื่นที่แก้ค่าก็อัปเดตตามให้ด้วย
+// มีฐานข้อมูล → เซิร์ฟเวอร์เป็นเจ้าของค่า ทุกเครื่องเห็นตรงกัน
+// ไม่มี        → เก็บลง localStorage ของเครื่องนั้น เพื่อให้ยังใช้งานได้
+//
+// ทั้งสองทางอ่านผ่าน external store ตัวเดียวกัน หน้าจอจึงไม่ต้องรู้ว่าอยู่โหมดไหน
+// และ SSR กับการ hydrate ครั้งแรกได้ค่าเดียวกันเสมอ
 
-function readStorage(): AppSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+export type WorkspaceState = { settings: AppSettings; decisions: MatchDecision[]; online: boolean };
+
+const readLocal = <T,>(key: string, fallback: T, revive: (raw: unknown) => T): T => {
+  if (typeof window === "undefined") return fallback;
   try {
-    const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    return stored ? normalizeSettings(JSON.parse(stored)) : DEFAULT_SETTINGS;
+    const stored = window.localStorage.getItem(key);
+    return stored ? revive(JSON.parse(stored)) : fallback;
   } catch {
-    return DEFAULT_SETTINGS;
+    return fallback;
   }
-}
+};
 
-function writeStorage(settings: AppSettings | null): void {
+const writeLocal = (key: string, value: unknown) => {
   if (typeof window === "undefined") return;
   try {
-    if (settings) window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    else window.localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // โหมดส่วนตัวของเบราว์เซอร์อาจเขียนไม่ได้ — ให้ใช้ค่าที่อยู่ในหน้าจอต่อไปเงียบ ๆ
+    // โหมดส่วนตัวของเบราว์เซอร์เขียนไม่ได้ — ใช้ค่าที่อยู่บนหน้าจอต่อไปเงียบ ๆ
   }
-}
+};
 
-let snapshot: AppSettings | null = null;
+const asDecisions = (raw: unknown): MatchDecision[] => (Array.isArray(raw) ? (raw as MatchDecision[]) : []);
+
+// สถานะฝั่งเบราว์เซอร์เท่านั้น ฝั่งเซิร์ฟเวอร์ไม่มี window จึงไม่เคยถูกเขียน
+// และไม่มีทางรั่วข้ามคำขอของคนละคน — ค่าที่ SSR ใช้มาจาก props ล้วน ๆ
+let state: WorkspaceState | null = null;
 const listeners = new Set<() => void>();
-
 const publish = () => listeners.forEach((listener) => listener());
 
-export function subscribeSettings(listener: () => void): () => void {
+/**
+ * วางค่าตั้งต้นจากเซิร์ฟเวอร์ **ครั้งเดียวต่อการโหลดหน้า**
+ *
+ * เรียกซ้ำได้ทุก render โดยไม่ทับของที่ผู้ใช้เพิ่งบันทึก ถ้าไม่มีการ์ดนี้ การกด
+ * ยืนยันจะถูกลบทิ้งทันทีที่ component render รอบถัดไป
+ */
+export function primeWorkspace(seed: WorkspaceState) {
+  if (typeof window === "undefined" || state !== null) return;
+  state = seed.online ? seed : {
+    settings: readLocal(SETTINGS_STORAGE_KEY, seed.settings, normalizeSettings),
+    decisions: readLocal(DECISIONS_STORAGE_KEY, seed.decisions, asDecisions),
+    online: false,
+  };
+}
+
+export function subscribeWorkspace(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
-/** ต้องคืนออบเจ็กต์ตัวเดิมทุกครั้งจนกว่าค่าจะเปลี่ยนจริง มิฉะนั้น React จะ render วน */
-export function getSettings(): AppSettings {
-  if (snapshot === null) snapshot = readStorage();
-  return snapshot;
+/** ต้องคืนออบเจ็กต์ตัวเดิมจนกว่าค่าจะเปลี่ยนจริง มิฉะนั้น React จะ render วน */
+export function getWorkspaceState(): WorkspaceState | null {
+  return state;
 }
 
-export function getDefaultSettings(): AppSettings {
-  return DEFAULT_SETTINGS;
+/** ตอน SSR และตอน hydrate ยังไม่มีสถานะฝั่งเครื่อง หน้าจอจึงใช้ค่าจาก props */
+export function getServerWorkspaceState(): WorkspaceState | null {
+  return null;
 }
 
-export function setSettings(next: AppSettings): void {
-  snapshot = next;
-  writeStorage(next);
+function commit(next: WorkspaceState) {
+  state = next;
   publish();
 }
 
-/** ลืมค่าที่ผู้ใช้เคยตั้งไว้ กลับไปใช้ค่าตั้งต้นของระบบ */
-export function resetSettings(): void {
-  snapshot = DEFAULT_SETTINGS;
-  writeStorage(null);
-  publish();
+/** ค่าที่ใช้อยู่จริงตอนนี้ — เรียกจากตัวบันทึกซึ่งทำงานหลัง hydrate เสมอ */
+function current(): WorkspaceState {
+  return state ?? { settings: DEFAULT_SETTINGS, decisions: [], online: false };
+}
+
+type SaveResult = { ok: boolean; error?: string };
+
+async function post(body: unknown): Promise<{ ok: boolean; error?: string; decisions?: MatchDecision[] }> {
+  const response = await fetch("/api/workspace", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  return { ok: response.ok, error: payload?.error, decisions: payload?.decisions };
+}
+
+export async function saveSettings(settings: AppSettings): Promise<SaveResult> {
+  const currentState = current();
+  commit({ ...currentState, settings });
+
+  if (!currentState.online) {
+    writeLocal(SETTINGS_STORAGE_KEY, settings);
+    return { ok: true };
+  }
+  const result = await post({ action: "saveSettings", settings });
+  if (!result.ok) commit(currentState); // เซิร์ฟเวอร์ไม่รับ ก็ต้องไม่หลอกว่าบันทึกแล้ว
+  return result;
+}
+
+export async function resetSettings(): Promise<SaveResult> {
+  return saveSettings(DEFAULT_SETTINGS);
+}
+
+export async function saveDecision(decision: Omit<MatchDecision, "id" | "decidedBy" | "decidedAt"> & { id?: string }): Promise<SaveResult> {
+  const currentState = current();
+  const local: MatchDecision = {
+    ...decision,
+    id: decision.id ?? `DEC-${Date.now().toString(36).toUpperCase()}`,
+    decidedBy: "web",
+    decidedAt: new Date(Date.now() + 7 * 3600 * 1000).toISOString().replace("Z", ""),
+  };
+  const decisions = [...currentState.decisions.filter((item) => item.id !== local.id), local];
+  commit({ ...currentState, decisions });
+
+  if (!currentState.online) {
+    writeLocal(DECISIONS_STORAGE_KEY, decisions);
+    return { ok: true };
+  }
+  const result = await post({ action: "saveDecision", decision: local });
+  if (!result.ok) commit(currentState);
+  else if (result.decisions) commit({ ...currentState, decisions: result.decisions });
+  return result;
+}
+
+export async function removeDecision(id: string): Promise<SaveResult> {
+  const currentState = current();
+  const decisions = currentState.decisions.filter((item) => item.id !== id);
+  commit({ ...currentState, decisions });
+
+  if (!currentState.online) {
+    writeLocal(DECISIONS_STORAGE_KEY, decisions);
+    return { ok: true };
+  }
+  const result = await post({ action: "removeDecision", id });
+  if (!result.ok) commit(currentState);
+  else if (result.decisions) commit({ ...currentState, decisions: result.decisions });
+  return result;
 }
 
 if (typeof window !== "undefined") {
-  // แก้ค่าที่แท็บหนึ่ง ให้แท็บอื่นที่เปิดค้างไว้เห็นตรงกัน
+  // แก้ค่าที่แท็บหนึ่ง ให้แท็บอื่นที่เปิดค้างไว้เห็นตรงกัน (เฉพาะโหมดออฟไลน์)
   window.addEventListener("storage", (event) => {
-    if (event.key !== null && event.key !== SETTINGS_STORAGE_KEY) return;
-    snapshot = readStorage();
-    publish();
+    const currentState = current();
+    if (currentState.online) return;
+    if (event.key !== SETTINGS_STORAGE_KEY && event.key !== DECISIONS_STORAGE_KEY && event.key !== null) return;
+    commit({
+      online: false,
+      settings: readLocal(SETTINGS_STORAGE_KEY, DEFAULT_SETTINGS, normalizeSettings),
+      decisions: readLocal(DECISIONS_STORAGE_KEY, [], asDecisions),
+    });
   });
 }

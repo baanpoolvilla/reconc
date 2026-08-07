@@ -9,82 +9,142 @@ test("the page is a server component that resolves its own data source", async (
 
   assert.match(page, /loadDataset/);
   assert.match(page, /<Workspace/);
-  // Rendered per request so a web upload is visible immediately.
+  // Rendered per request so an upload — or a decision made on another device —
+  // is visible immediately.
   assert.match(page, /export const dynamic = "force-dynamic"/);
+  assert.match(page, /serverSettings/);
+  assert.match(page, /serverDecisions/);
   await access(new URL("../.next/BUILD_ID", import.meta.url));
 });
 
-test("the matching view explains which amount matched which, and why", async () => {
-  const workspace = await read("../app/workspace.tsx");
+test("the home screen is a list of jobs, not a wall of numbers", async () => {
+  const home = await read("../app/views-home.tsx");
 
-  // Both rules, with the values that were actually compared.
-  assert.match(workspace, /group\.rulesPassed\.map/);
-  assert.match(workspace, /rule-check-mark/);
-  // The arithmetic, both sides itemised, and the provenance of each row.
-  assert.match(workspace, /equation-block/);
-  assert.match(workspace, /ฝั่งรายการรับเงิน/);
-  assert.match(workspace, /ฝั่งเงินเข้าธนาคาร/);
-  assert.match(workspace, /หน้า \{line\.page\} · บรรทัด \{line\.row\}/);
-  assert.match(workspace, /row \{receipt\.sourceRow\}/);
-  assert.match(workspace, /balanceBeforeSatang/);
-  // What the payment means for the booking it belongs to.
-  assert.match(workspace, /ผลต่อคำจอง/);
-  assert.match(workspace, /bookingBalanceDueSatang/);
+  // Every open job has its own card with a count and a way in.
+  assert.match(home, /TaskCard/);
+  assert.match(home, /ยอดที่ยังไม่ตรง|หาเงินเข้าไม่เจอ/);
+  assert.match(home, /ก้อนโอนจาก OTA/);
+  assert.match(home, /go\("fix"\)/);
+  assert.match(home, /go\("ota"\)/);
+  // Progress is the one number the screen leads with.
+  assert.match(home, /<Progress/);
+  // What a human decided is shown apart from what the rules produced, and undoable.
+  assert.match(home, /undoMatch/);
+  assert.match(home, /staleDecisions/);
 });
 
-test("the ledger reads like a spreadsheet and rings each amount by outcome", async () => {
-  const [workspace, css] = await Promise.all([read("../app/workspace.tsx"), read("../app/globals.css")]);
+test("the workbench shows both sides, the difference, and refuses a silent fudge", async () => {
+  const match = await read("../app/views-match.tsx");
 
-  // Every column the reviewer asked to see, keyed on the receipt line.
-  for (const column of ["Contact", "Channel", "Room Type", "ยอดคงค้าง", "Check-in", "Check-out", "สถานะ"]) {
-    assert.ok(workspace.includes(column), `ledger is missing the ${column} column`);
+  // Both sides of the pairing, each with a running total.
+  assert.match(match, /เงินที่รับมา/);
+  assert.match(match, /เงินเข้าธนาคาร/);
+  assert.match(match, /receiptSatang - bankSatang/);
+  // Suggestions are ranked by what that side is still missing — the two sides
+  // want opposite targets, so passing one number to both would sort one of them
+  // upside down and bury the row the reviewer is looking for.
+  assert.match(match, /const rank = [\s\S]{0,400}target/);
+  assert.match(match, /\}\), -difference\)/);
+  assert.match(match, /\}\), difference\)/);
+  // Each suggestion says how far off the date is, in words.
+  assert.match(match, /gapLabel/);
+  // A difference can be accepted, but never without a reason on the record.
+  assert.match(match, /needsReason/);
+  assert.match(match, /canConfirm/);
+  assert.match(match, /reason !== "" && \(reason !== "OTHER" \|\| note\.trim\(\)\.length > 0\)/);
+  // Confirming is one button, and it says what it will record.
+  assert.match(match, /confirm-button/);
+  assert.match(match, /confirmMatch/);
+});
+
+test("the OTA screen explains why the amounts can never tie out exactly", async () => {
+  const match = await read("../app/views-match.tsx");
+
+  assert.match(match, /หักค่าคอม/);
+  assert.match(match, /feeRate/);
+  assert.match(match, /SETTLEMENT/);
+  // The proposal is inert until a human confirms it.
+  assert.match(match, /ยังไม่เปลี่ยนจนกว่าจะกดยืนยัน|จนกว่าจะกดยืนยัน/);
+});
+
+test("the search screen can find any receipt and export what it shows", async () => {
+  const data = await read("../app/views-data.tsx");
+
+  for (const column of ["ผู้จอง", "ช่องทางรับเงิน", "ยอดที่รับมา", "สถานะ"]) {
+    assert.ok(data.includes(column), `browse view is missing the ${column} column`);
   }
-  assert.match(workspace, /amount-ring \$\{row\.status\}/);
-  assert.match(css, /\.amount-ring\.matched \{[^}]*border-color: var\(--green\)/);
-  assert.match(css, /\.amount-ring\.exception \{[^}]*border-color: var\(--red\)/);
-  // A border shorthand on the legend would out-specify the ring colours.
-  assert.doesNotMatch(css, /\.ledger-legend i, \.foot-split i \{[^}]*border: /);
-  // Payments of one booking read as a block, the way merged cells do.
-  assert.match(workspace, /firstOfBooking/);
-  // Each column must declare which document it came from.
-  assert.match(workspace, /src-ledger/);
-  assert.match(workspace, /src-collection/);
-  assert.match(workspace, /src-statement/);
-  assert.match(workspace, /exportCsv/);
+  assert.match(data, /statusLabel/);
+  assert.match(data, /exportCsv/);
+  // A BOM, so Excel opens Thai text as UTF-8 rather than mangling it.
+  assert.match(data, /\\uFEFF|﻿\$\{/u);
 });
 
 test("carries no hand-written demo rows in the UI", async () => {
-  const workspace = await read("../app/workspace.tsx");
+  const files = await Promise.all([
+    read("../app/workspace.tsx"), read("../app/views-home.tsx"),
+    read("../app/views-match.tsx"), read("../app/views-data.tsx"), read("../app/ui.tsx"),
+  ]);
 
-  assert.doesNotMatch(workspace, /The Palm Pool Villa|Daniel Wong|สุวรรณา|Trip\.com Travel Singapore/);
-  assert.doesNotMatch(workspace, /RC-2569-|GRP-885-0725|REC-07\d\d-\d+|EX-000\d\d/);
-  // "฿0.00" appears in rule copy; any literal amount with thousands would be a hard-coded figure.
-  assert.doesNotMatch(workspace, /฿\d{1,3},\d{3}/);
-  assert.doesNotMatch(workspace, /initialExceptions|initialDocuments|initialInvoices|statementMatches|bookingReconciliations|runRows|audits/);
+  for (const source of files) {
+    assert.doesNotMatch(source, /The Palm Pool Villa|Daniel Wong|Trip\.com Travel Singapore/);
+    assert.doesNotMatch(source, /RC-2569-|GRP-885-0725|REC-07\d\d-\d+|EX-000\d\d/);
+    // "฿0.00" appears in rule copy; any literal amount with thousands would be a
+    // hard-coded figure that did not come from a document.
+    assert.doesNotMatch(source, /฿\d{1,3},\d{3}/);
+    assert.doesNotMatch(source, /initialExceptions|initialDocuments|statementMatches|runRows/);
+  }
 });
 
 test("deploys and runs before any source document is loaded", async () => {
-  const [workspace, builder] = await Promise.all([read("../app/workspace.tsx"), read("../scripts/build-dataset.mjs")]);
+  const [home, builder, workspace] = await Promise.all([
+    read("../app/views-home.tsx"), read("../scripts/build-dataset.mjs"), read("../app/workspace.tsx"),
+  ]);
 
   // An empty data/ must produce an empty dataset, not a failed build …
   assert.match(builder, /missing\.length === found\.length/);
   assert.match(builder, /buildDataset\(\[\]\)/);
-  // … a partly filled one must still fail loudly.
+  // … a partly filled one must still fail loudly …
   assert.match(builder, /มีเอกสารไม่ครบ/);
-  assert.match(workspace, /const hasData = meta\.sources\.length > 0/);
-  // … and the UI must swap in a status screen instead of a wall of zeros, except
-  // on the pages that are useful with no documents loaded at all.
-  assert.match(workspace, /!hasData && active !== "upload" && active !== "rules" && active !== "settings" && <NoSourceDocuments/);
+  // … and the UI must show a way forward instead of a wall of zeros.
+  assert.match(workspace, /const hasData = dataset\.meta\.sources\.length > 0/);
+  assert.match(home, /if \(!hasData\)/);
+  assert.match(home, /go\("upload"\)/);
+});
+
+test("settings and decisions are stored server-side when a database exists", async () => {
+  const [route, source, settings] = await Promise.all([
+    read("../app/api/workspace/route.ts"), read("../lib/data-source.ts"), read("../lib/settings.ts"),
+  ]);
+
+  assert.match(route, /if \(!process\.env\.DATABASE_URL\)/);
+  assert.match(route, /status: 503/);
+  assert.match(route, /saveSettings|saveDecision|removeDecision/);
+  // A difference may never be recorded without a reason, on the server as well
+  // as in the browser.
+  assert.match(route, /differenceSatang !== 0 && !decision\.reason/);
+  // The page carries the stored state so the first render already agrees with it.
+  assert.match(source, /loadStoredSettings/);
+  assert.match(source, /listDecisions/);
+  // With no database the workspace still works, on this device only.
+  assert.match(settings, /localStorage/);
+  assert.match(settings, /subscribeWorkspace/);
+  // The store is seeded once per page load. Re-seeding on every render would
+  // erase a decision the moment the component re-rendered after saving it.
+  assert.match(settings, /export function primeWorkspace[\s\S]{0,300}state !== null\) return;/);
+  // Nothing the server renders may come from module state, or one visitor's
+  // settings would leak into another request on a warm serverless instance.
+  assert.match(settings, /typeof window === "undefined" \|\| state !== null/);
+  assert.match(settings, /getServerWorkspaceState\(\): WorkspaceState \| null \{\s*return null;/);
 });
 
 test("uploading requires a database and says so when there is none", async () => {
-  const [route, workspace] = await Promise.all([read("../app/api/upload/route.ts"), read("../app/workspace.tsx")]);
+  const [route, data] = await Promise.all([read("../app/api/upload/route.ts"), read("../app/views-data.tsx")]);
 
   assert.match(route, /if \(!process\.env\.DATABASE_URL\)/);
   assert.match(route, /status: 503/);
   assert.match(route, /detectDocumentKind/);
   assert.match(route, /runReconciliation/);
-  assert.match(workspace, /DATABASE_URL/);
+  assert.match(data, /DATABASE_URL/);
 });
 
 test("builds as a plain Next.js app that Vercel can deploy", async () => {
@@ -104,7 +164,9 @@ test("builds as a plain Next.js app that Vercel can deploy", async () => {
 });
 
 test("keeps product metadata and starter cleanup intact", async () => {
-  const [workspace, layout, packageJson] = await Promise.all([read("../app/workspace.tsx"), read("../app/layout.tsx"), read("../package.json")]);
+  const [workspace, layout, packageJson] = await Promise.all([
+    read("../app/workspace.tsx"), read("../app/layout.tsx"), read("../package.json"),
+  ]);
 
   assert.match(workspace, /ClearClose/);
   assert.match(layout, /og\.png/);
