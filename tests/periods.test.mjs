@@ -3,6 +3,7 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { migrate } from "../lib/db/client.mjs";
 import {
+  latestDataset,
   listPeriods,
   loadDocumentFile,
   recordDocument,
@@ -15,6 +16,7 @@ import {
   storedDocuments,
 } from "../lib/db/repository.mjs";
 import { periodOf, periodRange, periodsOf, shiftPeriod, statementPeriod } from "../lib/periods.mjs";
+import { RULESET_VERSION } from "../lib/reconciliation.mjs";
 import { ALL_PERIODS, applySettings, DEFAULT_SETTINGS, scopeToPeriod } from "../lib/settings-core.mjs";
 
 // หลายงวดในฐานข้อมูลเดียว
@@ -347,6 +349,54 @@ test("ช่วงวันตั้งต้นกว้างพอจะค�
 
   assert.equal(proposal.selectedIds.length, 0, "คำจองเมื่อเจ็ดเดือนก่อนต้องไม่ถูกดูดเข้าก้อน");
   assert.equal(proposal.status, "EMPTY");
+});
+
+// ── การอัปเกรดทับฐานข้อมูลที่ใช้งานอยู่ ─────────────────────────────────────
+
+test("ภาพผลกระทบยอดที่รุ่นก่อนบันทึกไว้ ถูกคำนวณใหม่แทนที่จะเสิร์ฟต่อ", async () => {
+  // อาการจริงที่เจอตอน deploy ทับฐานข้อมูลที่มีข้อมูลอยู่แล้ว: ตารางถูก migrate
+  // ครบ ข้อมูลอยู่ครบ แต่หน้าจอยังอ่านภาพที่โค้ดรุ่นก่อนเขียนไว้ ซึ่งไม่มีสนาม
+  // periods หน้าจอเลยทำเหมือนไม่มีงวดสักงวด ทั้งที่เอกสารขึ้นครบทุกฉบับ
+  const db = await freshDb();
+
+  await replaceBookings(db, [booking("R1", "2026-07-10", 100000)]);
+  await replaceReceipts(db, [receipt("RCP-1", "R1", "2026-07-10", 100000, "KbankGL987")]);
+  await replaceStatement(db, statement("987", "2026-07", [line("L-JUL", "2026-07-10", 100000)]));
+  await noteDocument(db, "collection", "2026-07");
+
+  // ภาพแบบที่รุ่นก่อนเขียนไว้: ไม่มี meta.periods และกฎเป็นเวอร์ชันเก่า
+  await db.query(
+    `INSERT INTO clearclose.reconciliation_runs (id, period, ruleset_version, created_at, summary, dataset)
+     VALUES ('RUN-OLD', '2026-07', '3.0.0', '2026-08-01T00:00:00', '{}', $1)`,
+    [JSON.stringify({
+      meta: { generatedAt: "2026-08-01T00:00:00", period: "2026-07", rulesetVersion: "3.0.0", sources: [] },
+      bookings: [], receipts: [], statements: [],
+      reconciliation: { rulesetVersion: "3.0.0", accounts: [], groups: [], exceptions: [], outOfScope: [], staleDecisions: [], summary: {} },
+    })],
+  );
+
+  const served = await latestDataset(db);
+
+  assert.deepEqual(served.meta.periods, ["2026-07"], "ต้องคำนวณใหม่จนได้งวดกลับมา");
+  assert.equal(served.reconciliation.rulesetVersion, RULESET_VERSION);
+  assert.equal(served.receipts.length, 1, "แถวเดิมในตารางต้องกลับมาครบโดยไม่ต้องอัปโหลดซ้ำ");
+  assert.equal(served.reconciliation.summary.matchedGroups, 1);
+
+  // ซ่อมครั้งเดียวพอ คำขอถัดไปต้องอ่านภาพใหม่ตรง ๆ ไม่คำนวณซ้ำทุกครั้ง
+  const runsBefore = await db.query("SELECT count(*)::int AS total FROM clearclose.reconciliation_runs");
+  await latestDataset(db);
+  const runsAfter = await db.query("SELECT count(*)::int AS total FROM clearclose.reconciliation_runs");
+  assert.equal(runsAfter[0].total, runsBefore[0].total, "ภาพที่ทันสมัยแล้วต้องไม่ถูกคำนวณใหม่อีก");
+
+  const audit = await db.query("SELECT action FROM clearclose.audit_events WHERE action = 'SNAPSHOT_REBUILT'");
+  assert.equal(audit.length, 1, "การซ่อมต้องทิ้งร่องรอยไว้ ไม่ใช่เกิดขึ้นเงียบ ๆ");
+});
+
+test("ฐานข้อมูลที่ยังไม่มีแถวเลย ไม่ถูกบังคับให้คำนวณอะไร", async () => {
+  const db = await freshDb();
+  assert.equal(await latestDataset(db), null, "ไม่มีข้อมูลก็ต้องบอกว่าไม่มี ไม่ใช่สร้างรอบเปล่า");
+  const runs = await db.query("SELECT count(*)::int AS total FROM clearclose.reconciliation_runs");
+  assert.equal(runs[0].total, 0);
 });
 
 // ── ไฟล์ต้นฉบับ ─────────────────────────────────────────────────────────────
