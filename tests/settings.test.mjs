@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+
+import { makeDataset } from "./fixtures.mjs";
 
 import {
   DEFAULT_SETTINGS,
@@ -13,7 +14,7 @@ import {
 } from "../lib/settings-core.mjs";
 import { normalizePaymentMethod } from "../lib/reconciliation.mjs";
 
-const dataset = JSON.parse(await readFile(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
+const dataset = makeDataset();
 
 const withExclusions = (exclusions) => ({
   ...DEFAULT_SETTINGS,

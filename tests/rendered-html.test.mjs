@@ -95,20 +95,36 @@ test("carries no hand-written demo rows in the UI", async () => {
   }
 });
 
-test("deploys and runs before any source document is loaded", async () => {
-  const [home, builder, workspace] = await Promise.all([
-    read("../app/views-home.tsx"), read("../scripts/build-dataset.mjs"), read("../app/workspace.tsx"),
+test("deploys and runs before any document has been uploaded", async () => {
+  const [home, source, workspace] = await Promise.all([
+    read("../app/views-home.tsx"), read("../lib/data-source.ts"), read("../app/workspace.tsx"),
   ]);
 
-  // An empty data/ must produce an empty dataset, not a failed build …
-  assert.match(builder, /missing\.length === found\.length/);
-  assert.match(builder, /buildDataset\(\[\]\)/);
-  // … a partly filled one must still fail loudly …
-  assert.match(builder, /มีเอกสารไม่ครบ/);
+  // An empty database must render an empty dataset, not a crash …
+  assert.match(source, /const emptyDataset: Dataset/);
+  assert.match(source, /source: stored \? "database" : "empty"/);
   // … and the UI must show a way forward instead of a wall of zeros.
   assert.match(workspace, /const hasData = dataset\.meta\.sources\.length > 0/);
   assert.match(home, /if \(!hasData\)/);
   assert.match(home, /go\("upload"\)/);
+});
+
+test("uploaded documents are the only way data enters the system", async () => {
+  const [source, dataset, packageJson] = await Promise.all([
+    read("../lib/data-source.ts"), read("../lib/dataset.ts"), read("../package.json"),
+  ]);
+
+  // เอกสารบัญชีจริงมีชื่อผู้เข้าพัก เบอร์โทร และรายการเดินบัญชีอยู่ข้างใน มันต้อง
+  // ไม่มีทางถูก build เข้าไปอยู่ใน bundle ที่ deploy ขึ้นเซิร์ฟเวอร์
+  assert.doesNotMatch(source, /dataset\.generated|buildTimeDataset/);
+  assert.doesNotMatch(dataset, /dataset\.generated/);
+  assert.doesNotMatch(JSON.parse(packageJson).scripts.build ?? "", /data:build/);
+  assert.equal(JSON.parse(packageJson).scripts["data:build"], undefined, "the build-time data path must stay gone");
+
+  // และ data/ ต้องถูก ignore ไว้ ไม่ใช่แค่บังเอิญยังไม่มีใคร commit
+  const ignored = await read("../.gitignore");
+  assert.match(ignored, /^\/data\/$/m);
+  assert.match(ignored, /^\/lib\/dataset\.generated\.json$/m);
 });
 
 test("settings and decisions are stored server-side when a database exists", async () => {
@@ -150,7 +166,7 @@ test("uploading requires a database and says so when there is none", async () =>
 test("builds as a plain Next.js app that Vercel can deploy", async () => {
   const packageJson = JSON.parse(await read("../package.json"));
 
-  assert.equal(packageJson.scripts.build, "npm run data:build && next build");
+  assert.equal(packageJson.scripts.build, "next build");
   assert.equal(packageJson.scripts.start, "next start");
   assert.ok(packageJson.dependencies.next, "next must be a runtime dependency");
   assert.ok(packageJson.dependencies["@neondatabase/serverless"], "the Neon driver ships to production");

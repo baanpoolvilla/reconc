@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+
+import { makeDataset } from "./fixtures.mjs";
 import {
   RULESET_VERSION,
   findExactSubset,
@@ -186,8 +187,8 @@ test("reconciles an empty dataset without throwing", () => {
   assert.equal(result.summary.controlBalanced, true);
 });
 
-test("the generated dataset satisfies both hard rules on every match", async () => {
-  const dataset = JSON.parse(await readFile(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
+test("a full reconciled dataset satisfies both hard rules on every match", () => {
+  const dataset = makeDataset();
 
   assert.ok(dataset.reconciliation.groups.length > 0);
   for (const group of dataset.reconciliation.groups) {

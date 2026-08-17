@@ -3,8 +3,8 @@ import type { AppSettings, MatchDecision } from "../lib/settings";
 import Workspace from "./workspace";
 
 // Rendered per request so a web upload — or a decision someone made on another
-// device — shows up immediately. With no DATABASE_URL this resolves to the
-// dataset built from data/ and is effectively static anyway.
+// device — shows up immediately. With no DATABASE_URL there is nothing to read,
+// and the page says so rather than falling back to figures from anywhere else.
 export const dynamic = "force-dynamic";
 
 export default async function Page() {

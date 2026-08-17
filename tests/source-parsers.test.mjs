@@ -1,61 +1,82 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { readWorkbook } from "../lib/parsers/xlsx.mjs";
-import { parseStatementPdf } from "../lib/parsers/statement.mjs";
+import { readWorkbookBuffer } from "../lib/parsers/xlsx.mjs";
+import { parseStatementBuffer } from "../lib/parsers/statement.mjs";
+import { DOCUMENT_KINDS, detectDocumentKind, parseDocument } from "../lib/parsers/documents.mjs";
+
+// เทสต์ตัวอ่านไฟล์ กับเอกสารจริงถ้ามีอยู่ในเครื่อง
+//
+// ระบบไม่อ่านโฟลเดอร์ data/ อีกแล้ว — ข้อมูลจริงเข้าทางเดียวคืออัปโหลดเข้า Postgres
+// แต่ตัวอ่าน PDF/XLSX ยังต้องพิสูจน์กับเอกสารจริงที่ธนาคารและ PMS ออกให้ ไม่ใช่กับ
+// ไฟล์ที่เราแต่งขึ้นเอง เพราะสิ่งที่มันต้องทนคือรูปแบบของเขา ไม่ใช่ของเรา
+//
+// เอกสารพวกนั้น commit ไม่ได้ (มีชื่อผู้เข้าพัก เบอร์โทร และรายการเดินบัญชี) เทสต์ชุด
+// นี้จึงข้ามไปเองเมื่อไม่มีไฟล์ และทำงานให้เมื่อมี — วางไฟล์เดือนไหนก็ได้ใน data/
+// แล้วสั่ง npm test เพื่อตรวจว่ารูปแบบไฟล์เดือนนั้นยังอ่านออก ก่อนอัปโหลดขึ้นระบบจริง
 
 const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
-const files = readdirSync(dataDir);
-const find = (predicate) => `${dataDir}${files.find(predicate)}`;
+const files = existsSync(dataDir) ? readdirSync(dataDir).filter((file) => !file.startsWith(".")) : [];
+const read = (name) => readFileSync(`${dataDir}${name}`);
 
-test("data/ holds the four source documents the pipeline expects", () => {
-  assert.ok(files.some((file) => file.startsWith("885") && file.endsWith(".pdf")), "missing statement 885 PDF");
-  assert.ok(files.some((file) => file.startsWith("987") && file.endsWith(".pdf")), "missing statement 987 PDF");
-  assert.ok(files.some((file) => file.includes("บัญชีแยกประเภท") && file.endsWith(".xlsx")), "missing ledger workbook");
-  assert.ok(files.some((file) => file.includes("รายงานการรับเงิน") && file.endsWith(".xlsx")), "missing collection report");
+const found = Object.fromEntries(
+  Object.keys(DOCUMENT_KINDS).map((kind) => [kind, files.find((file) => DOCUMENT_KINDS[kind].matches(file))]),
+);
+const absent = { skip: "ไม่มีเอกสารจริงในโฟลเดอร์ data/ ของเครื่องนี้ — ข้ามไป" };
+
+test("ทุกไฟล์ใน data/ ถูกจำแนกชนิดได้จากชื่อไฟล์", files.length ? {} : absent, () => {
+  for (const file of files) {
+    assert.ok(detectDocumentKind(file), `${file} ไม่เข้ารูปแบบชื่อของเอกสารชนิดใดเลย`);
+  }
 });
 
-test("the ledger workbook exposes the booking creation time column", () => {
-  const [sheet] = readWorkbook(find((file) => file.includes("บัญชีแยกประเภท") && file.endsWith(".xlsx")));
+test("บัญชีแยกประเภทมีคอลัมน์เวลาที่สร้างคำจอง", found.ledger ? {} : absent, () => {
+  const [sheet] = readWorkbookBuffer(read(found.ledger));
   const header = sheet.rows.find((row) => row.includes("Reservation Creation Time"));
 
-  assert.ok(header, "ledger header row not found");
+  assert.ok(header, "ไม่พบหัวตารางของบัญชีแยกประเภท");
   assert.equal(header[1], "Reservation Creation Time");
   assert.equal(header[3], "PMS Reservation No.");
-  assert.ok(sheet.rows.length > 100);
+
+  // วันที่สร้างคำจองคือวันเดียวที่กฎ R01 มองหา ทุกแถวจึงต้องอ่านออกเป็น ISO
+  const bookings = parseDocument("ledger", read(found.ledger), found.ledger).bookings;
+  assert.ok(bookings.length > 0, "อ่านคำจองไม่ได้สักแถว");
+  for (const booking of bookings) {
+    assert.match(booking.createdDate, /^\d{4}-\d{2}-\d{2}$/, `${booking.reservationNo} วันที่สร้างคำจองอ่านไม่ออก`);
+  }
 });
 
-test("the collection report exposes date, method, amount and reservation columns", () => {
-  const [sheet] = readWorkbook(find((file) => file.includes("รายงานการรับเงิน") && file.endsWith(".xlsx")));
+test("รายงานการรับเงินมีคอลัมน์วันที่ ช่องทาง ยอด และเลขที่จอง", found.collection ? {} : absent, () => {
+  const [sheet] = readWorkbookBuffer(read(found.collection));
   const header = sheet.rows.find((row) => row[0] === "Date");
 
   assert.deepEqual(header.slice(0, 5), ["Date", "Item", "Payment Method", "Amount", "Reservation Number"]);
-  assert.ok(sheet.rows.length > 100);
+
+  const receipts = parseDocument("collection", read(found.collection), found.collection).receipts;
+  assert.ok(receipts.length > 0, "อ่านรายการรับเงินไม่ได้สักแถว");
+  for (const receipt of receipts) {
+    assert.match(receipt.date, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(Number.isInteger(receipt.amountSatang), "ยอดเงินต้องเป็นจำนวนเต็มสตางค์");
+  }
+  assert.equal(new Set(receipts.map((row) => row.id)).size, receipts.length, "รหัสรายการรับเงินซ้ำกัน");
 });
 
-// Expected counts come from the summary KBank prints on page 1 of each statement.
-// The account numbers themselves are deliberately not asserted here — they are
-// customer data and this file is committed; the format check below is enough.
-for (const [prefix, credits, debits] of [["885", 51, 1], ["987", 110, 12]]) {
-  test(`statement ${prefix} parses and its control total balances`, () => {
-    const statement = parseStatementPdf(find((file) => file.startsWith(prefix) && file.endsWith(".pdf")));
+// ยอดคุมคือข้อพิสูจน์ว่าอ่าน statement ครบทุกบรรทัด: ยอดยกมา + เงินเข้า − เงินออก
+// ต้องลงพอดีกับยอดยกไปที่ธนาคารพิมพ์ไว้ ขาดบรรทัดเดียวก็ไม่ลงตัว
+for (const kind of ["statement885", "statement987"]) {
+  const code = kind.replace("statement", "");
+  test(`Statement ${code} อ่านออกและยอดคุมลงตัว`, found[kind] ? {} : absent, () => {
+    const statement = parseStatementBuffer(read(found[kind]), found[kind]);
 
-    assert.match(statement.accountNo, /^\d{3}-\d-\d{5}-\d$/, "account number was not parsed");
-    assert.equal(statement.creditCount, credits, "credit count disagrees with the PDF summary");
-    assert.equal(statement.debitCount, debits, "debit count disagrees with the PDF summary");
-    // opening + credits − debits must land exactly on the printed closing balance.
-    assert.equal(statement.controlDeltaSatang, 0);
+    assert.match(statement.accountNo, /^\d{3}-\d-\d{5}-\d$/, "อ่านเลขที่บัญชีไม่ได้");
+    assert.match(statement.cycle, /^\d{2}\/\d{2}\/\d{4} - \d{2}\/\d{2}\/\d{4}$/, "อ่านรอบบัญชีไม่ได้");
+    assert.equal(statement.controlDeltaSatang, 0, "ยอดคุมไม่ลงตัว แปลว่าอ่านบรรทัดไม่ครบ");
+
+    assert.equal(statement.creditCount, statement.lines.filter((line) => line.direction === "credit").length);
+    assert.equal(statement.debitCount, statement.lines.filter((line) => line.direction === "debit").length);
     assert.ok(statement.lines.every((line) => /^\d{4}-\d{2}-\d{2}$/.test(line.date)));
     assert.ok(statement.lines.every((line) => Number.isInteger(line.amountSatang)));
+    assert.equal(new Set(statement.lines.map((line) => line.id)).size, statement.lines.length, "รหัสบรรทัดซ้ำกัน");
   });
 }
-
-test("the generated dataset is in sync with data/", () => {
-  const dataset = JSON.parse(readFileSync(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
-  const names = new Set(dataset.meta.sources.map((source) => source.name));
-
-  for (const name of names) assert.ok(files.includes(name), `${name} is referenced by the dataset but missing from data/`);
-  assert.equal(dataset.meta.sources.length, 4);
-  assert.ok(dataset.bookings.length > 0 && dataset.receipts.length > 0);
-});

@@ -1,18 +1,19 @@
 import type { Dataset } from "./dataset";
-import generated from "./dataset.generated.json";
+import * as engine from "./reconciliation.mjs";
 
-// Where the dashboard gets its numbers.
+// Where the dashboard gets its numbers: the latest reconciliation run stored in
+// Postgres, which is what a web upload writes. There is one source and no other.
 //
-//   DATABASE_URL set  → the latest reconciliation run stored in Postgres,
-//                       which is what web uploads write to.
-//   DATABASE_URL unset→ the dataset built from data/ at build time.
+// There used to be a second path that parsed accounting documents from data/ at
+// build time and baked the result into the bundle. It is gone. Real guest names,
+// phone numbers and bank statement lines have no business inside a deployment
+// artifact, and having two sources meant the screen could show numbers that no
+// upload ever produced.
 //
-// The second path keeps the app deployable and demonstrable before any
-// database exists; it is never a silent fallback for a *failing* database.
+// With no DATABASE_URL, or with a database that cannot be reached, the app says
+// so and shows nothing — it never invents a fallback set of figures.
 
-export const buildTimeDataset = generated as unknown as Dataset;
-
-export type DatasetSource = "database" | "build" | "empty";
+export type DatasetSource = "database" | "empty";
 
 export type LoadedDataset = {
   dataset: Dataset;
@@ -25,13 +26,15 @@ export type LoadedDataset = {
   error?: string;
 };
 
+const RULESET_VERSION = engine.RULESET_VERSION as string;
+
 const emptyDataset: Dataset = {
-  meta: { generatedAt: "", period: "", periods: [], rulesetVersion: buildTimeDataset.meta.rulesetVersion, sources: [] },
+  meta: { generatedAt: "", period: "", periods: [], rulesetVersion: RULESET_VERSION, sources: [] },
   bookings: [],
   receipts: [],
   statements: [],
   reconciliation: {
-    rulesetVersion: buildTimeDataset.meta.rulesetVersion,
+    rulesetVersion: RULESET_VERSION,
     accounts: [],
     groups: [],
     exceptions: [],
@@ -46,20 +49,18 @@ const emptyDataset: Dataset = {
   },
 };
 
-export async function loadDataset(): Promise<LoadedDataset> {
-  const databaseConfigured = Boolean(process.env.DATABASE_URL);
+const nothing = (extra: Partial<LoadedDataset>): LoadedDataset => ({
+  dataset: emptyDataset,
+  source: "empty",
+  databaseConfigured: false,
+  online: false,
+  settings: null,
+  decisions: [],
+  ...extra,
+});
 
-  if (!databaseConfigured) {
-    const dataset = buildTimeDataset.meta.sources.length ? buildTimeDataset : emptyDataset;
-    return {
-      dataset,
-      source: buildTimeDataset.meta.sources.length ? "build" : "empty",
-      databaseConfigured: false,
-      online: false,
-      settings: null,
-      decisions: [],
-    };
-  }
+export async function loadDataset(): Promise<LoadedDataset> {
+  if (!process.env.DATABASE_URL) return nothing({});
 
   try {
     const [{ getDb, ensureSchema }, { latestDataset, listDecisions, loadStoredSettings }] = await Promise.all([
@@ -82,15 +83,10 @@ export async function loadDataset(): Promise<LoadedDataset> {
       decisions,
     };
   } catch (error) {
-    // Surface the failure rather than quietly serving stale build-time numbers.
-    return {
-      dataset: emptyDataset,
-      source: "empty",
+    // Surface the failure rather than quietly serving numbers from somewhere else.
+    return nothing({
       databaseConfigured: true,
-      online: false,
-      settings: null,
-      decisions: [],
       error: error instanceof Error ? error.message : "ต่อฐานข้อมูลไม่สำเร็จ",
-    };
+    });
   }
 }

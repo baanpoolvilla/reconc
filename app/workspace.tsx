@@ -250,7 +250,7 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
             <footer>
               <span>ClearClose · กฎเวอร์ชัน {dataset.reconciliation.rulesetVersion}</span>
               <p>
-                {source === "database" ? "ข้อมูลจากฐานข้อมูล" : source === "build" ? "ข้อมูลจากโฟลเดอร์ data/" : "ยังไม่มีข้อมูล"}
+                {source === "database" ? "ข้อมูลจากฐานข้อมูล" : "ยังไม่มีข้อมูลในฐานข้อมูล"}
                 {databaseConfigured && !stored.online ? " · ต่อฐานข้อมูลไม่ได้" : ""}
               </p>
             </footer>

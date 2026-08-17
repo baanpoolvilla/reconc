@@ -6,9 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "data:build": "node scripts/build-dataset.mjs",
-    "dev": "npm run data:build && next dev",
-    "build": "npm run data:build && next build",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern .next"

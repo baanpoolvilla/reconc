@@ -1,9 +1,8 @@
-import generated from "./dataset.generated.json";
-
-// Everything the UI renders comes from this file. It is produced by
-// `npm run data:build`, which parses the source documents in data/ — the two
-// KBank statement PDFs, the collection report and the ledger export.
-// There is no demo, seeded or hand-written data anywhere in the app.
+// The shape of everything the UI renders, and the small helpers that format it.
+//
+// This file holds types and formatters only — no data. Every figure on screen
+// comes from a reconciliation run stored in Postgres, written by an upload.
+// There is no demo, seeded, bundled or hand-written data anywhere in the app.
 
 /** MANUAL และ OTA คือกลุ่มที่คนกดยืนยันเอง ไม่ใช่กฎอัตโนมัติ */
 export type MatchType = "1:1" | "N:1" | "1:N" | "MANUAL" | "OTA";
@@ -262,8 +261,6 @@ export type Dataset = {
     };
   };
 };
-
-export const dataset = generated as unknown as Dataset;
 
 export const baht = (satang: number) =>
   `${satang < 0 ? "−" : ""}฿${(Math.abs(satang) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
+
+import { makeDataset } from "./fixtures.mjs";
 
 import { DEFAULT_SETTINGS, applySettings } from "../lib/settings-core.mjs";
 import { reconcile } from "../lib/reconciliation.mjs";
 import { isOtaMethod, looksLikeSettlement, proposeSettlements } from "../lib/settlements.mjs";
 
-const dataset = JSON.parse(await readFile(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
+const dataset = makeDataset();
 const settlement = DEFAULT_SETTINGS.settlement;
 
 const base = applySettings(dataset, DEFAULT_SETTINGS, []);

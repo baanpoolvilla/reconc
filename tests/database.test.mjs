@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { ensureSchema, migrate, resetSchemaCache, schemaSql } from "../lib/db/client.mjs";
 import { MIGRATIONS } from "../lib/db/schema.mjs";
@@ -20,8 +18,8 @@ import {
   saveStoredSettings,
   storedDocuments,
 } from "../lib/db/repository.mjs";
-import { DOCUMENT_KINDS, parseDocument } from "../lib/parsers/documents.mjs";
 import { DEFAULT_SETTINGS } from "../lib/settings-core.mjs";
+import { makeDataset } from "./fixtures.mjs";
 
 // PGlite is real Postgres compiled to WASM, so these exercise the exact SQL
 // that runs against Neon in production.
@@ -32,12 +30,28 @@ async function freshDb() {
   return db;
 }
 
-const dataDir = fileURLToPath(new URL("../data/", import.meta.url));
-const files = readdirSync(dataDir);
+// เทสต์ชุดนี้เคยอ่านเอกสารบัญชีจริงจาก data/ ตอนนี้ระบบไม่มีเส้นทางนั้นแล้ว —
+// ข้อมูลจริงเข้าทางเดียวคืออัปโหลดเข้า Postgres — จึงใช้ชุดข้อมูลสังเคราะห์แทน
+// สิ่งที่พิสูจน์ยังเหมือนเดิม: แถวที่เขียนลงฐานข้อมูลอ่านกลับมาแล้วกระทบยอดได้ผลเท่าเดิม
+const fixture = makeDataset();
 
-function loadSource(kind) {
-  const name = files.find(DOCUMENT_KINDS[kind].matches);
-  return { name, buffer: readFileSync(`${dataDir}${name}`) };
+/** เขียนทุกแถวของชุดข้อมูลลงฐานข้อมูล เหมือนที่ endpoint อัปโหลดทำ */
+async function loadFixture(db) {
+  await replaceBookings(db, fixture.bookings);
+  await replaceReceipts(db, fixture.receipts);
+  for (const statement of fixture.statements) await replaceStatement(db, statement);
+  for (const source of fixture.meta.sources) {
+    await recordDocument(db, {
+      id: `DOC-${source.kind}`,
+      kind: source.kind,
+      periods: [source.period],
+      name: source.name,
+      sha256: "x".repeat(64),
+      sizeBytes: 1024,
+      rowCount: source.rows,
+      uploadedBy: "test",
+    });
+  }
 }
 
 test("the schema applies cleanly to an empty Postgres database", async () => {
@@ -154,30 +168,18 @@ test("ensureSchema applies the schema once, and retries after a failure", async 
 
 test("an upload round-trips through Postgres and reproduces the same reconciliation", async () => {
   const db = await freshDb();
-
-  for (const kind of Object.keys(DOCUMENT_KINDS)) {
-    const { name, buffer } = loadSource(kind);
-    const parsed = parseDocument(kind, buffer, name);
-    if (parsed.bookings) await replaceBookings(db, parsed.bookings);
-    if (parsed.receipts) await replaceReceipts(db, parsed.receipts);
-    if (parsed.statement) await replaceStatement(db, parsed.statement);
-    await recordDocument(db, {
-      id: `DOC-${kind}`, kind, name, sha256: "x".repeat(64), sizeBytes: buffer.length,
-      rowCount: parsed.bookings?.length ?? parsed.receipts?.length ?? parsed.statement.lines.length,
-      uploadedBy: "test",
-    });
-  }
+  await loadFixture(db);
 
   const { dataset } = await runReconciliation(db);
-  const fromFiles = JSON.parse(readFileSync(new URL("../lib/dataset.generated.json", import.meta.url), "utf8"));
 
-  assert.equal(dataset.bookings.length, fromFiles.bookings.length);
-  assert.equal(dataset.receipts.length, fromFiles.receipts.length);
-  assert.equal(dataset.statements.length, fromFiles.statements.length);
-  // The stored rows must reconcile to exactly what the build-time pipeline found.
-  assert.equal(dataset.reconciliation.summary.matchedGroups, fromFiles.reconciliation.summary.matchedGroups);
-  assert.equal(dataset.reconciliation.summary.matchedReceipts, fromFiles.reconciliation.summary.matchedReceipts);
-  assert.equal(dataset.reconciliation.summary.exceptionCount, fromFiles.reconciliation.summary.exceptionCount);
+  assert.equal(dataset.bookings.length, fixture.bookings.length);
+  assert.equal(dataset.receipts.length, fixture.receipts.length);
+  assert.equal(dataset.statements.length, fixture.statements.length);
+  // แถวที่เดินทางผ่าน Postgres ต้องกระทบยอดได้ผลเท่ากับที่คำนวณจากแถวในหน่วยความจำ
+  assert.equal(dataset.reconciliation.summary.matchedGroups, fixture.reconciliation.summary.matchedGroups);
+  assert.equal(dataset.reconciliation.summary.matchedReceipts, fixture.reconciliation.summary.matchedReceipts);
+  assert.equal(dataset.reconciliation.summary.exceptionCount, fixture.reconciliation.summary.exceptionCount);
+  assert.equal(dataset.reconciliation.summary.matchedSatang, fixture.reconciliation.summary.matchedSatang);
   for (const statement of dataset.statements) assert.equal(statement.controlDeltaSatang, 0);
 
   const stored = await latestDataset(db);
@@ -187,27 +189,25 @@ test("an upload round-trips through Postgres and reproduces the same reconciliat
 
 test("re-uploading a document replaces its rows instead of doubling them", async () => {
   const db = await freshDb();
-  const { name, buffer } = loadSource("collection");
-  const parsed = parseDocument("collection", buffer, name);
+  const { receipts } = fixture;
 
-  await replaceReceipts(db, parsed.receipts);
-  await recordDocument(db, { id: "DOC-1", kind: "collection", name, sha256: "a".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
-  await replaceReceipts(db, parsed.receipts);
-  await recordDocument(db, { id: "DOC-2", kind: "collection", name, sha256: "b".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
+  await replaceReceipts(db, receipts);
+  await recordDocument(db, { id: "DOC-1", kind: "collection", periods: ["2026-07"], name: "collection.xlsx", sha256: "a".repeat(64), sizeBytes: 1, rowCount: receipts.length, uploadedBy: "test" });
+  await replaceReceipts(db, receipts);
+  await recordDocument(db, { id: "DOC-2", kind: "collection", periods: ["2026-07"], name: "collection.xlsx", sha256: "b".repeat(64), sizeBytes: 1, rowCount: receipts.length, uploadedBy: "test" });
 
-  const [receipts] = await db.query("SELECT count(*)::int AS total FROM clearclose.receipts");
+  const [stored] = await db.query("SELECT count(*)::int AS total FROM clearclose.receipts");
   const [documents] = await db.query("SELECT count(*)::int AS total FROM clearclose.documents");
-  assert.equal(receipts.total, parsed.receipts.length);
-  assert.equal(documents.total, 1, "one row per document kind");
+  assert.equal(stored.total, receipts.length);
+  assert.equal(documents.total, 1, "one row per document kind per period");
 });
 
 test("a partial upload still reconciles what it can", async () => {
   const db = await freshDb();
-  const { name, buffer } = loadSource("collection");
-  const parsed = parseDocument("collection", buffer, name);
+  const parsed = { receipts: fixture.receipts };
 
   await replaceReceipts(db, parsed.receipts);
-  await recordDocument(db, { id: "DOC-1", kind: "collection", name, sha256: "c".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
+  await recordDocument(db, { id: "DOC-1", kind: "collection", periods: ["2026-07"], name: "collection.xlsx", sha256: "c".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
   const { dataset } = await runReconciliation(db);
 
   // No ledger and no statements yet, so nothing can satisfy the date rule.
@@ -239,11 +239,10 @@ test("การตั้งค่าเก็บได้หนึ่งชุ�
 
 test("การตัดสินใจของผู้ตรวจอยู่รอดการอัปโหลดเอกสารทับ", async () => {
   const db = await freshDb();
-  const { name, buffer } = loadSource("collection");
-  const parsed = parseDocument("collection", buffer, name);
+  const parsed = { receipts: fixture.receipts };
 
   await replaceReceipts(db, parsed.receipts);
-  await recordDocument(db, { id: "DOC-1", kind: "collection", name, sha256: "e".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
+  await recordDocument(db, { id: "DOC-1", kind: "collection", periods: ["2026-07"], name: "collection.xlsx", sha256: "e".repeat(64), sizeBytes: 1, rowCount: parsed.receipts.length, uploadedBy: "test" });
 
   const saved = await saveDecision(db, {
     kind: "MANUAL",

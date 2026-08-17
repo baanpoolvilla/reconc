@@ -227,8 +227,7 @@ export function Upload() {
 
       {!online && (
         <Banner tone="amber" title="อัปโหลดผ่านเว็บต้องเปิดโหมดออนไลน์ก่อน">
-          ตั้งค่า <code>DATABASE_URL</code> ของ Neon Postgres ใน Vercel แล้ว redeploy · ระหว่างนี้ยังวางไฟล์ในโฟลเดอร์ <code>data/</code>
-          แล้วสั่ง <code>npm run data:build</code> ได้ตามเดิม
+          ตั้งค่า <code>DATABASE_URL</code> ของ Neon Postgres ใน Vercel แล้ว redeploy · ฐานข้อมูลคือที่เก็บข้อมูลที่เดียวของระบบ ไม่มีทางอื่นให้ใส่ข้อมูลเข้าไป
         </Banner>
       )}
 
@@ -608,7 +607,7 @@ function TagEditor({ title, hint, values, onChange, disabled }: {
 }
 
 function SystemSection({ onImport }: { onImport: (next: AppSettings) => void }) {
-  const { raw, dataset, settings, online, source } = useWorkspace();
+  const { raw, dataset, settings, online } = useWorkspace();
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const json = JSON.stringify(settings, null, 2);
@@ -629,7 +628,7 @@ function SystemSection({ onImport }: { onImport: (next: AppSettings) => void }) 
       <section className="panel">
         <PanelTitle title="ข้อมูลที่ระบบกำลังใช้" />
         <div className="settings-readonly">
-          <span><small>ที่เก็บข้อมูล</small><b>{online ? "Neon Postgres" : source === "build" ? "ไฟล์ในโฟลเดอร์ data/" : "ยังไม่มีข้อมูล"}</b></span>
+          <span><small>ที่เก็บข้อมูล</small><b>{online ? "Neon Postgres" : "ยังไม่ได้ต่อฐานข้อมูล"}</b></span>
           <span><small>รอบบัญชี</small><b>{raw.meta.period ? thaiMonthLabel(raw.meta.period) : "—"}</b></span>
           <span><small>ประมวลผลล่าสุด</small><b>{raw.meta.generatedAt ? thaiDateTime(raw.meta.generatedAt) : "—"}</b></span>
           <span><small>กฎที่ใช้</small><b className="mono">v{dataset.reconciliation.rulesetVersion}</b></span>
