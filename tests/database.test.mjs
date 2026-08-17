@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { ensureSchema, migrate, resetSchemaCache, schemaSql } from "../lib/db/client.mjs";
+import { MIGRATIONS } from "../lib/db/schema.mjs";
 import {
   deleteDecision,
   latestDataset,
@@ -45,8 +46,50 @@ test("the schema applies cleanly to an empty Postgres database", async () => {
 
   assert.deepEqual(tables.map((row) => row.table_name), [
     "app_settings", "audit_events", "bank_statements", "bank_transactions", "bookings",
-    "documents", "match_decisions", "receipts", "reconciliation_runs",
+    "document_files", "documents", "match_decisions", "receipts", "reconciliation_runs",
+    "schema_migrations",
   ]);
+});
+
+test("ทุก migration ถูกบันทึกไว้ และรันซ้ำก็ไม่ทำอะไรเพิ่ม", async () => {
+  const db = await freshDb();
+  const applied = await db.query("SELECT id FROM clearclose.schema_migrations ORDER BY id");
+  assert.deepEqual(applied.map((row) => row.id), MIGRATIONS.map((migration) => migration.id));
+
+  await migrate(db);
+  const again = await db.query("SELECT count(*)::int AS total FROM clearclose.schema_migrations");
+  assert.equal(again[0].total, MIGRATIONS.length, "รันซ้ำต้องไม่บันทึกซ้ำ");
+});
+
+test("ฐานข้อมูลที่สร้างไว้ก่อนมีคอลัมน์งวด ถูกอัปเกรดโดยไม่ต้องอัปโหลดใหม่", async () => {
+  // นี่คือเส้นทางของฐานข้อมูลจริงที่ใช้งานอยู่แล้ว: ตารางรุ่นแรกมีข้อมูลอยู่ แต่ยัง
+  // ไม่มีคอลัมน์งวด migration ต้องเติมงวดจากวันที่ในแถวเอง ไม่ใช่ล้างแล้วเริ่มใหม่
+  const pg = new PGlite();
+  const db = { query: async (sql, params = []) => (await pg.query(sql, params)).rows };
+
+  for (const statement of MIGRATIONS[0].sql.split(/;\s*\n/).map((part) => part.trim()).filter(Boolean)) {
+    await db.query(`${statement};`);
+  }
+  await db.query(
+    "INSERT INTO clearclose.receipts (id, date, method, amount_satang) VALUES ('RCP-1', '2026-07-04', 'KbankGL987', 1000)",
+  );
+  await db.query(
+    "INSERT INTO clearclose.bank_statements (code, method, cycle) VALUES ('987', 'KbankGL987', '01/07/2026 - 31/07/2026')",
+  );
+  await db.query(
+    "INSERT INTO clearclose.bank_transactions (id, statement_code, date, direction) VALUES ('T-1', '987', '2026-07-04', 'credit')",
+  );
+
+  await migrate(db);
+
+  const [receipt] = await db.query("SELECT period FROM clearclose.receipts WHERE id = 'RCP-1'");
+  const [statement] = await db.query("SELECT period FROM clearclose.bank_statements WHERE code = '987'");
+  const [line] = await db.query("SELECT period, statement_period FROM clearclose.bank_transactions WHERE id = 'T-1'");
+
+  assert.equal(receipt.period, "2026-07", "งวดของรายการรับเงินมาจากวันที่ของตัวเอง");
+  assert.equal(statement.period, "2026-07", "งวดของ statement มาจากรอบที่พิมพ์บนเอกสาร");
+  assert.equal(line.period, "2026-07");
+  assert.equal(line.statement_period, "2026-07", "บรรทัดยังชี้กลับไปที่ statement ฉบับเดิม");
 });
 
 test("carries its schema in the bundle instead of reading a file at runtime", async () => {
@@ -57,7 +100,7 @@ test("carries its schema in the bundle instead of reading a file at runtime", as
 
   assert.doesNotMatch(client, /node:fs|readFileSync|fileURLToPath|import\.meta\.url/);
   assert.match(schemaSql(), /CREATE SCHEMA IF NOT EXISTS clearclose/);
-  assert.equal(schemaSql().match(/CREATE TABLE/g).length, 9);
+  assert.equal(schemaSql().match(/CREATE TABLE/g).length, 10);
 });
 
 test("shares a database safely with tables of the same name", async () => {

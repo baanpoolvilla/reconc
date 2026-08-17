@@ -7,6 +7,7 @@ import {
   replaceReceipts,
   replaceStatement,
   runReconciliation,
+  saveDocumentFile,
   storedDocuments,
 } from "../../../lib/db/repository.mjs";
 
@@ -15,7 +16,18 @@ export const maxDuration = 60;
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
-type Accepted = { kind: string; name: string; rows: number };
+// ไฟล์ต้นฉบับถูกเก็บไว้ในฐานข้อมูลเพื่อให้ย้อนกลับไปเปิดเอกสารที่ตัวเลขงวดนั้นมา
+// จากได้จริง เอกสารสี่ฉบับต่อเดือนของจริงรวมกันไม่ถึงหนึ่งเมกะไบต์ เพดานนี้จึงไว้
+// กันไฟล์ผิดปกติไม่ให้ยัด payload ก้อนโตข้าม HTTP ไปหา Neon — ตัวข้อมูลยังเข้าครบ
+// ไม่ว่าไฟล์จะใหญ่แค่ไหน หายไปแค่สำเนาไฟล์ให้กดดาวน์โหลด
+const MAX_STORED_BYTES = 8 * 1024 * 1024;
+
+const CONTENT_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+type Accepted = { kind: string; name: string; rows: number; periods: string[]; fileStored: boolean };
 
 async function sha256(bytes: ArrayBuffer) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -73,26 +85,48 @@ export async function POST(request: Request) {
       const buffer = Buffer.from(bytes);
       const parsed = parseDocument(kind, buffer, file.name);
 
-      if (parsed.bookings) await replaceBookings(db, parsed.bookings);
-      if (parsed.receipts) await replaceReceipts(db, parsed.receipts);
-      if (parsed.statement) await replaceStatement(db, parsed.statement);
+      // งวดที่ไฟล์นี้ครอบคลุมมาจากวันที่ในแถวของมันเอง ไม่ได้ให้ใครเลือกตอนอัปโหลด
+      // และการเขียนลงตารางแทนที่เฉพาะงวดเหล่านี้ เดือนอื่นไม่ถูกแตะ
+      let periods: string[] = [];
+      if (parsed.bookings) periods = await replaceBookings(db, parsed.bookings);
+      if (parsed.receipts) periods = await replaceReceipts(db, parsed.receipts);
+      if (parsed.statement) periods = await replaceStatement(db, parsed.statement);
 
       const rows = parsed.bookings?.length ?? parsed.receipts?.length ?? parsed.statement?.lines.length ?? 0;
+      const id = crypto.randomUUID();
       await recordDocument(db, {
-        id: crypto.randomUUID(),
+        id,
         kind,
+        periods,
         name: file.name,
         sha256: await sha256(bytes),
         sizeBytes: file.size,
         rowCount: rows,
         uploadedBy: "web",
       });
-      await recordAudit(db, "DOCUMENT_UPLOADED", "document", file.name, { kind, rows });
-      accepted.push({ kind, name: file.name, rows });
+
+      const fileStored = file.size <= MAX_STORED_BYTES;
+      if (fileStored) {
+        await saveDocumentFile(db, id, {
+          name: file.name,
+          contentType: CONTENT_TYPES[file.name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream",
+          sizeBytes: file.size,
+          contentBase64: buffer.toString("base64"),
+        });
+      }
+
+      await recordAudit(db, "DOCUMENT_UPLOADED", "document", file.name, { kind, rows, periods, fileStored });
+      accepted.push({ kind, name: file.name, rows, periods, fileStored });
     }
 
     const { id, dataset } = await runReconciliation(db);
-    return Response.json({ runId: id, accepted, summary: dataset.reconciliation.summary, sources: dataset.meta.sources });
+    return Response.json({
+      runId: id,
+      accepted,
+      periods: dataset.meta.periods,
+      summary: dataset.reconciliation.summary,
+      sources: dataset.meta.sources,
+    });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "ประมวลผลไฟล์ไม่สำเร็จ" }, { status: 500 });
   }

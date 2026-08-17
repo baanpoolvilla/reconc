@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, SearchBox, Stat, Switch, Tabs, useWorkspace } from "./ui";
 import { type Booking, type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
 import {
@@ -126,6 +126,9 @@ export function Browse() {
                   <td>
                     <Pill tone={row.status === "matched" ? "green" : row.status === "open" ? "red" : "slate"}>{statusLabel(row.status)}</Pill>
                     {row.group && <small className="block">{thaiDate(row.group.lines[0].date)} · {baht(row.group.bankSatang)}</small>}
+                    {row.group?.crossPeriod && (
+                      <small className="block"><span className="cross-period">↷ เงินเข้า{thaiMonthLabel(row.group.period)}</span></small>
+                    )}
                     {row.excludedBy && <small className="block">{row.excludedBy.value}</small>}
                   </td>
                 </tr>
@@ -160,13 +163,34 @@ const sourceKindToDocument: Record<string, string> = {
   bank_statement_885: "statement885", bank_statement_987: "statement987",
 };
 
-type UploadResult = { runId?: string; accepted?: { kind: string; name: string; rows: number }[]; error?: string };
+type AcceptedFile = { kind: string; name: string; rows: number; periods?: string[]; fileStored?: boolean };
+type UploadResult = { runId?: string; accepted?: AcceptedFile[]; periods?: string[]; error?: string };
+type StoredDocument = {
+  id: string; kind: string; period: string; name: string;
+  size_bytes: number; row_count: number; uploaded_at: string; has_file: boolean;
+};
 
 export function Upload() {
-  const { dataset, online } = useWorkspace();
+  const { raw, online, period, periods, setPeriod } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
-  const loaded = new Set(dataset.meta.sources.map((item) => sourceKindToDocument[item.kind] ?? item.kind));
+  const [documents, setDocuments] = useState<StoredDocument[] | null>(null);
+
+  // เอกสารครบหรือยัง เป็นคำถามรายงวด ไม่ใช่คำถามของทั้งระบบ
+  const inPeriod = raw.meta.sources.filter((item) => !item.period || item.period === period);
+  const loaded = new Set(inPeriod.map((item) => sourceKindToDocument[item.kind] ?? item.kind));
+
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    void fetch("/api/upload")
+      .then((response) => response.json())
+      .then((payload: { documents?: StoredDocument[] }) => {
+        if (!cancelled) setDocuments(payload.documents ?? []);
+      })
+      .catch(() => { if (!cancelled) setDocuments([]); });
+    return () => { cancelled = true; };
+  }, [online, result]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -195,7 +219,11 @@ export function Upload() {
 
   return (
     <>
-      <PageHeading title="นำเข้าเอกสาร" description="ใส่ไฟล์ของเดือนนี้ ระบบจะอ่านและกระทบยอดใหม่ให้ทันที" />
+      <PageHeading
+        title="นำเข้าเอกสาร"
+        description="ใส่ไฟล์ของเดือนไหนก็ได้ ระบบดูงวดจากวันที่ในไฟล์เอง แล้วกระทบยอดใหม่ทั้งระบบ"
+        action={periods.length > 1 ? <Pill tone="blue">{periods.length} งวดในระบบ</Pill> : undefined}
+      />
 
       {!online && (
         <Banner tone="amber" title="อัปโหลดผ่านเว็บต้องเปิดโหมดออนไลน์ก่อน">
@@ -205,11 +233,14 @@ export function Upload() {
       )}
 
       <section className="panel">
-        <PanelTitle title="เอกสารที่ต้องใช้ทั้งสี่ไฟล์" />
+        <PanelTitle
+          title={`เอกสารของงวด${period === "all" ? "ที่เลือก" : thaiMonthLabel(period)}`}
+          action={<Pill tone={loaded.size === requiredDocuments.length ? "green" : "amber"}>{loaded.size}/{requiredDocuments.length} ไฟล์</Pill>}
+        />
         <div className="doc-grid">
           {requiredDocuments.map((file) => {
             const ready = loaded.has(file.kind);
-            const stored = dataset.meta.sources.find((item) => (sourceKindToDocument[item.kind] ?? item.kind) === file.kind);
+            const stored = inPeriod.find((item) => (sourceKindToDocument[item.kind] ?? item.kind) === file.kind);
             return (
               <article key={file.kind} className={ready ? "ready" : ""}>
                 <span className={`doc-check ${ready ? "ready" : ""}`}>{ready ? "✓" : "+"}</span>
@@ -228,7 +259,10 @@ export function Upload() {
             <small>เลือกพร้อมกันได้ทั้งสี่ไฟล์ · ระบบดูจากชื่อไฟล์ว่าเป็นเอกสารชนิดใด · ไม่เกิน 25 MB ต่อไฟล์</small>
           </label>
           <div className="upload-actions">
-            <p>อัปโหลดไฟล์ชนิดเดิมซ้ำจะแทนที่ของเดิม ไม่สะสมซ้ำ · การจับคู่ที่เคยยืนยันไว้ไม่หาย</p>
+            <p>
+              อัปโหลดงวดใหม่ไม่ลบงวดเก่า · อัปโหลดไฟล์ชนิดเดิมของงวดเดิมซ้ำจะแทนที่เฉพาะงวดนั้น ·
+              การจับคู่ที่เคยยืนยันไว้ไม่หาย
+            </p>
             <button className="primary-button" type="submit" disabled={!online || busy}>
               {busy ? "กำลังประมวลผล…" : "อัปโหลดและกระทบยอดใหม่"}
             </button>
@@ -238,13 +272,84 @@ export function Upload() {
         {result?.error && <Banner tone="red" title="ไม่สำเร็จ">{result.error}</Banner>}
         {result?.accepted && (
           <Banner tone="green" title={`นำเข้าสำเร็จ ${result.accepted.length} ไฟล์ · กำลังโหลดหน้าใหม่`}>
-            {result.accepted.map((item) => `${item.name} (${item.rows.toLocaleString("en-US")} แถว)`).join(" · ")}
+            {result.accepted.map((item) => (
+              `${item.name} (${item.rows.toLocaleString("en-US")} แถว${item.periods?.length ? ` · งวด ${item.periods.map(thaiMonthLabel).join(", ")}` : ""})`
+            )).join(" · ")}
           </Banner>
         )}
       </section>
+
+      <ArchiveSection documents={documents} period={period} onPick={setPeriod} />
     </>
   );
 }
+
+// ── คลังเอกสารที่เก็บไว้ ─────────────────────────────────────────────────────
+//
+// ตัวเลขของงวดหนึ่งจะตรวจย้อนกลับได้จริงก็ต่อเมื่อเปิดไฟล์ที่มันถูกอ่านมาได้ด้วย
+// รายการนี้จึงเรียงตามงวด และให้กดดาวน์โหลดไฟล์ต้นฉบับได้ทุกฉบับที่ยังเก็บไว้
+
+function ArchiveSection({ documents, period, onPick }: {
+  documents: StoredDocument[] | null;
+  period: string;
+  onPick: (next: string) => void;
+}) {
+  const byPeriod = useMemo(() => {
+    const buckets = new Map<string, StoredDocument[]>();
+    for (const document of documents ?? []) {
+      const list = buckets.get(document.period) ?? [];
+      list.push(document);
+      buckets.set(document.period, list);
+    }
+    return [...buckets.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [documents]);
+
+  if (documents === null) return null;
+
+  return (
+    <section className="panel">
+      <PanelTitle title="เอกสารที่เก็บไว้ในระบบ" action={<Pill>{documents.length} ฉบับ</Pill>} />
+      {!documents.length && (
+        <EmptyState icon="↑" title="ยังไม่มีเอกสารในฐานข้อมูล" detail="อัปโหลดไฟล์ของงวดแรกเพื่อเริ่มเก็บประวัติ" />
+      )}
+      {byPeriod.map(([bucket, rows]) => (
+        <div key={bucket} className="archive-period">
+          <header>
+            <b>{bucket ? thaiMonthLabel(bucket) : "ไม่ระบุงวด"}</b>
+            <span>{rows.length} ฉบับ · {rows.reduce((sum, row) => sum + Number(row.row_count), 0).toLocaleString("en-US")} แถว</span>
+            {bucket && bucket !== period && (
+              <button className="text-button" onClick={() => onPick(bucket)}>ดูงวดนี้</button>
+            )}
+          </header>
+          <div className="doc-list">
+            {rows.map((row) => (
+              <div key={row.id}>
+                <span className={`file-icon ${row.name.endsWith(".pdf") ? "pdf" : "sheet"}`}>{row.name.endsWith(".pdf") ? "P" : "X"}</span>
+                <p>
+                  <b>{row.name}</b>
+                  <small>
+                    {DOCUMENT_LABELS[row.kind] ?? row.kind} · {Number(row.row_count).toLocaleString("en-US")} แถว ·
+                    {" "}{(Number(row.size_bytes) / 1024).toFixed(0)} KB · {thaiDateTime(row.uploaded_at)}
+                  </small>
+                </p>
+                {row.has_file
+                  ? <a className="secondary-button" href={`/api/documents/${row.id}`}>⇩ ต้นฉบับ</a>
+                  : <em>ไม่ได้เก็บไฟล์</em>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+const DOCUMENT_LABELS: Record<string, string> = {
+  ledger: "บัญชีแยกประเภท",
+  collection: "รายงานการรับเงิน",
+  statement885: "Statement บัญชี 885",
+  statement987: "Statement บัญชี 987",
+};
 
 // ── ตั้งค่า ───────────────────────────────────────────────────────────────────
 
@@ -353,9 +458,15 @@ export function Settings() {
             ข้อเสนอไม่มีผลกับตัวเลขใดจนกว่าจะกดยืนยัน
           </p>
           <div className="settings-field">
-            <span><b>ช่วงวันที่ยอมให้ห่างจากก้อนโอน</b><small>คำจองที่รับเงินภายในกี่วันรอบก้อนโอนถึงจะถูกเสนอ · ยิ่งกว้างยิ่งเสนอเยอะแต่มั่วง่ายขึ้น</small></span>
+            <span>
+              <b>ช่วงวันที่ยอมให้ห่างจากก้อนโอน</b>
+              <small>
+                คำจองที่รับเงินภายในกี่วันรอบก้อนโอนถึงจะถูกเสนอ · ยิ่งกว้างยิ่งเสนอเยอะแต่มั่วง่ายขึ้น ·
+                ต่ำกว่า 31 วันจะจับก้อนที่ OTA โอนข้ามเดือนไม่ได้เลย
+              </small>
+            </span>
             <div className="segmented">
-              {[3, 5, 7, 14, 30].map((days) => (
+              {[7, 14, 30, 45, 60, 90].map((days) => (
                 <button key={days} className={settings.settlement.windowDays === days ? "active" : ""} disabled={busy} onClick={() => patchSettlement({ windowDays: days })}>{days} วัน</button>
               ))}
             </div>

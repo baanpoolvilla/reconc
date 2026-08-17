@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, TaskCard, useWorkspace } from "./ui";
 import { baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
-import { DECISION_REASONS, type DecisionReason } from "../lib/settings";
+import { ALL_PERIODS, DECISION_REASONS, type DecisionReason } from "../lib/settings";
 
 // หน้าแรก — กล่องงาน
 //
@@ -11,7 +11,7 @@ import { DECISION_REASONS, type DecisionReason } from "../lib/settings";
 // ตัวเลขอื่นทั้งหมดไปอยู่หน้ารายงาน
 
 export function Home() {
-  const { dataset, effective, hasData, online, go } = useWorkspace();
+  const { dataset, effective, hasData, online, go, period, periods } = useWorkspace();
   const { summary, exceptions } = dataset.reconciliation;
 
   const receiptSide = exceptions.filter((item) => item.receiptId).length;
@@ -39,8 +39,10 @@ export function Home() {
   return (
     <>
       <PageHeading
-        title={`รอบ${thaiMonthLabel(dataset.meta.period)}`}
-        description="ทำงานที่ค้างให้หมด แล้วรอบนี้ก็ปิดได้"
+        title={period === ALL_PERIODS ? `ทุกงวดรวมกัน · ${periods.length} เดือน` : `รอบ${thaiMonthLabel(period)}`}
+        description={period === ALL_PERIODS
+          ? "ภาพรวมทุกเดือนที่เก็บไว้ · เลือกงวดที่แถบบนเพื่อปิดทีละรอบ"
+          : "ทำงานที่ค้างให้หมด แล้วรอบนี้ก็ปิดได้"}
         action={<Pill tone={online ? "green" : "amber"}>{online ? "ออนไลน์ · ทุกเครื่องเห็นตรงกัน" : "เก็บในเครื่องนี้เท่านั้น"}</Pill>}
       />
 
@@ -278,9 +280,13 @@ export function Report() {
               <tr><th>บัญชี</th><th>ยอดยกมา</th><th>เงินเข้า</th><th>เงินออก</th><th>ยอดยกไป</th><th>ผลต่าง</th><th>กระทบยอดแล้ว</th></tr>
             </thead>
             <tbody>
+              {/* ดู "ทุกงวด" อยู่ = บัญชีเดียวกันมีได้หลายแถว แถวละเดือน */}
               {accounts.map((row) => (
-                <tr key={row.code}>
-                  <td><b>•••{row.code}</b><small className="block">{row.branch}</small></td>
+                <tr key={`${row.code}-${row.period}`}>
+                  <td>
+                    <b>•••{row.code}</b>
+                    <small className="block">{row.period ? thaiMonthLabel(row.period) : row.branch}</small>
+                  </td>
                   <td>{baht(row.openingSatang)}</td>
                   <td>{baht(row.creditSatang)}</td>
                   <td>{baht(row.debitSatang)}</td>
@@ -299,7 +305,8 @@ export function Report() {
           title="ทุกกลุ่มที่กระทบยอดแล้ว"
           action={
             <div className="tabs compact">
-              {[{ value: "all", label: "ทุกบัญชี" }, ...accounts.map((row) => ({ value: row.code, label: `•••${row.code}` }))].map((option) => (
+              {/* กรองตามเลขบัญชี ไม่ใช่ตามบัญชี+งวด จึงต้องรวมงวดที่ซ้ำกันออกไปก่อน */}
+              {[{ value: "all", label: "ทุกบัญชี" }, ...[...new Set(accounts.map((row) => row.code))].map((code) => ({ value: code, label: `•••${code}` }))].map((option) => (
                 <button key={option.value} className={account === option.value ? "active" : ""} onClick={() => setAccount(option.value)}>{option.label}</button>
               ))}
             </div>

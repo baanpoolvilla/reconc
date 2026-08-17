@@ -63,6 +63,17 @@ main { grid-column: 2; min-width: 0; }
 .topbar-brand { display: none; align-items: center; gap: 9px; }
 .topbar-brand b { font: 700 17px var(--serif); }
 .topbar-status { flex: 1; }
+.period-picker { display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 13px; border-radius: 99px; background: white; border: 1px solid var(--line); }
+.period-picker > span { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.period-picker select { border: 0; background: transparent; font: 600 13px inherit; color: inherit; padding: 3px 6px; border-radius: 8px; cursor: pointer; }
+.period-picker select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.cross-period { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; background: #efe7fb; color: #4c2f80; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.archive-period { margin-top: 18px; }
+.archive-period > header { display: flex; align-items: baseline; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.archive-period > header b { font: 700 15px var(--serif); }
+.archive-period > header span { flex: 1; font-size: 12px; color: var(--muted); }
+.archive-period .doc-list a.secondary-button { padding: 6px 12px; font-size: 12px; text-decoration: none; }
+.archive-period .doc-list em { font-size: 12px; color: var(--muted); font-style: normal; }
 .work-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 99px; background: white; border: 1px solid var(--line); font-size: 13px; font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
 .dot.amber { background: var(--amber); } .dot.green { background: var(--green); }

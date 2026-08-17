@@ -65,6 +65,8 @@ export type StatementLine = {
 
 export type Statement = {
   code: string;
+  /** งวดที่พิมพ์อยู่บนเอกสาร รูป YYYY-MM — บัญชีหนึ่งใบมี statement ได้เดือนละฉบับ */
+  period: string;
   method: string;
   source: string;
   accountNo: string;
@@ -142,10 +144,17 @@ export type MatchGroup = {
   account: string;
   accountNo: string;
   accountName: string;
+  accountPeriod: string;
   statementSource: string;
   type: MatchType;
   score: number;
   date: string;
+  /** งวดที่เงินเข้าบัญชีจริง คืองวดที่กลุ่มนี้ถูกนับเข้ารายงาน */
+  period: string;
+  /** จริงเมื่อรับเงินไว้คนละเดือนกับที่เงินเข้าบัญชี — เคสปกติของก้อนโอน OTA */
+  crossPeriod: boolean;
+  /** งวดที่รายการรับเงินในกลุ่มนี้ถูกบันทึกไว้ */
+  sourcePeriods: string[];
   rulesPassed: RuleCheck[];
   decision: GroupDecision | null;
   receiptSatang: number;
@@ -162,6 +171,8 @@ export type ReconciliationException = {
   severity: Severity;
   account: string;
   accountNo: string;
+  period: string;
+  accountPeriod: string;
   reservationNo: string;
   guest: string;
   receiptId: string;
@@ -184,6 +195,8 @@ export type ReconciliationException = {
 
 export type AccountResult = {
   code: string;
+  period: string;
+  cycle: string;
   accountNo: string;
   method: string;
   branch: string;
@@ -209,7 +222,9 @@ export type Dataset = {
     generatedAt: string;
     period: string;
     rulesetVersion: string;
-    sources: { kind: string; label?: string; name: string; rows: number }[];
+    /** ทุกงวดที่มีข้อมูลอยู่ เรียงจากเก่าไปใหม่ — ตัวกรองงวดบนหน้าจออ่านตัวนี้ */
+    periods: string[];
+    sources: { kind: string; label?: string; name: string; rows: number; period?: string; periodStart?: string; periodEnd?: string }[];
   };
   bookings: Booking[];
   receipts: Receipt[];
@@ -219,7 +234,12 @@ export type Dataset = {
     accounts: AccountResult[];
     groups: MatchGroup[];
     exceptions: ReconciliationException[];
-    outOfScope: { method: string; count: number; amountSatang: number }[];
+    /**
+     * รายการที่ยังไม่มี statement ให้กระทบ แยกสองเหตุ:
+     * NO_BANK_ACCOUNT  — ช่องทางนี้ไม่มีบัญชีธนาคารเลย เช่นเงินที่ OTA เก็บแทนเรา
+     * MISSING_STATEMENT — มีบัญชีอยู่ แต่ยังไม่ได้อัปโหลด statement ของงวดนี้
+     */
+    outOfScope: { method: string; period: string; reason: "NO_BANK_ACCOUNT" | "MISSING_STATEMENT"; count: number; amountSatang: number }[];
     /** การตัดสินใจที่อ้างถึงแถวซึ่งไม่มีอยู่ในเอกสารชุดปัจจุบันแล้ว */
     staleDecisions: { id: string; receiptIds: string[]; bankLineIds: string[]; bankSatang: number; staleReason: string }[];
     summary: {
@@ -236,6 +256,9 @@ export type Dataset = {
       acceptedDifferenceSatang: number;
       staleDecisions: number;
       controlBalanced: boolean;
+      crossPeriodGroups: number;
+      crossPeriodSatang: number;
+      missingStatements: number;
     };
   };
 };

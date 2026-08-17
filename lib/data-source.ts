@@ -26,7 +26,7 @@ export type LoadedDataset = {
 };
 
 const emptyDataset: Dataset = {
-  meta: { generatedAt: "", period: "", rulesetVersion: buildTimeDataset.meta.rulesetVersion, sources: [] },
+  meta: { generatedAt: "", period: "", periods: [], rulesetVersion: buildTimeDataset.meta.rulesetVersion, sources: [] },
   bookings: [],
   receipts: [],
   statements: [],
@@ -41,6 +41,7 @@ const emptyDataset: Dataset = {
       inScopeReceipts: 0, matchedReceipts: 0, matchedGroups: 0, exceptionCount: 0,
       matchRate: 0, matchedSatang: 0, unexplainedReceiptSatang: 0, unexplainedBankSatang: 0,
       decidedGroups: 0, decidedReceipts: 0, acceptedDifferenceSatang: 0, staleDecisions: 0, controlBalanced: true,
+      crossPeriodGroups: 0, crossPeriodSatang: 0, missingStatements: 0,
     },
   },
 };

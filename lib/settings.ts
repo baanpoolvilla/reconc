@@ -72,6 +72,9 @@ export type SettlementCandidate = {
   group: string;
   amountSatang: number;
   dayGap: number;
+  period: string;
+  /** รับเงินไว้คนละเดือนกับที่ก้อนโอนเข้าบัญชี */
+  crossPeriod: boolean;
   selected: boolean;
 };
 
@@ -80,6 +83,11 @@ export type SettlementProposal = {
   lineId: string;
   account: string;
   date: string;
+  /** งวดที่ก้อนโอนเข้าบัญชี */
+  period: string;
+  /** งวดที่รายการในก้อนถูกบันทึกรับเงินไว้ — มากกว่าหนึ่งคือก้อนที่เหลื่อมเดือน */
+  sourcePeriods: string[];
+  crossPeriod: boolean;
   time: string;
   description: string;
   channel: string;
@@ -130,6 +138,14 @@ export const applySettings = core.applySettings as (
 ) => EffectiveDataset;
 
 export const dayGap = engine.dayGap as (left: string, right: string) => number;
+
+export const ALL_PERIODS: string = core.ALL_PERIODS;
+
+/** ตัดชุดข้อมูลที่กระทบยอดเสร็จแล้วให้เหลืองวดเดียวเพื่อแสดงผล — ไม่คำนวณอะไรใหม่ */
+export const scopeToPeriod = core.scopeToPeriod as (
+  effective: EffectiveDataset,
+  period: string,
+) => EffectiveDataset;
 
 // ── ที่เก็บค่า ───────────────────────────────────────────────────────────────
 //

@@ -18,9 +18,16 @@ export type ViewId = "home" | "fix" | "ota" | "browse" | "report" | "upload" | "
 export type WorkspaceValue = {
   /** เอกสารต้นทางดิบ ก่อนใช้ตัวกรองใด ๆ */
   raw: Dataset;
-  /** ชุดข้อมูลที่ทุกหน้าจอใช้ */
+  /** ชุดข้อมูลที่ทุกหน้าจอใช้ — ตัดเหลือเฉพาะงวดที่เลือกอยู่แล้ว */
   dataset: Dataset;
   effective: EffectiveDataset;
+  /** ผลกระทบยอดของทุกงวดรวมกัน ก่อนตัดตามงวดที่เลือก */
+  all: EffectiveDataset;
+  /** งวดที่กำลังดูอยู่ รูป YYYY-MM หรือ "all" */
+  period: string;
+  /** ทุกงวดที่มีข้อมูลอยู่ เรียงจากเก่าไปใหม่ */
+  periods: string[];
+  setPeriod: (next: string) => void;
   settings: AppSettings;
   decisions: MatchDecision[];
   online: boolean;

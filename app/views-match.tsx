@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Banner, EmptyState, PageHeading, Pill, SearchBox, Tabs, useWorkspace } from "./ui";
-import { type Receipt, type StatementLine, baht, thaiDate } from "../lib/dataset";
+import { type Receipt, type StatementLine, baht, thaiDate, thaiMonthLabel } from "../lib/dataset";
 import { DECISION_REASONS, type DecisionReason, dayGap } from "../lib/settings";
 
 // งานจับคู่ — ทั้งการแก้ยอดที่ไม่ตรง และการแตกยอดก้อนโอนของ OTA
@@ -13,9 +13,15 @@ import { DECISION_REASONS, type DecisionReason, dayGap } from "../lib/settings";
 
 type OpenLine = StatementLine & { account: string };
 
-/** แถวที่ยังไม่มีใครจับคู่ ทั้งสองฝั่ง */
+/**
+ * แถวที่ยังไม่มีใครจับคู่ ทั้งสองฝั่ง — จากทุกงวด ไม่ใช่เฉพาะงวดที่กำลังดูอยู่
+ *
+ * ตะกร้าจับคู่ต้องมองข้ามเดือนได้ ไม่งั้นการหยิบรายการรับเงินของกรกฎาคมมาคู่กับ
+ * เงินที่เข้าบัญชีในสิงหาคม — งานที่ทั้งหน้านี้มีไว้ทำ — จะทำไม่ได้เลย
+ */
 function useOpenRows() {
-  const { dataset } = useWorkspace();
+  const { all } = useWorkspace();
+  const dataset = all.dataset;
   return useMemo(() => {
     const usedReceipts = new Set(dataset.reconciliation.groups.flatMap((group) => group.receipts.map((row) => row.id)));
     const usedLines = new Set(dataset.reconciliation.groups.flatMap((group) => group.lines.map((row) => row.id)));
@@ -452,7 +458,10 @@ export function Settlements() {
                 <span className={`queue-dot ${item.status === "READY" ? "green" : "amber"}`} />
                 <span className="queue-name">
                   <b>{baht(item.netSatang)}</b>
-                  <small>{thaiDate(item.date)} · {item.channel} · •••{item.account}</small>
+                  <small>
+                    {thaiDate(item.date)} · {item.channel} · •••{item.account}
+                    {item.crossPeriod && <> · <span className="cross-period">↷ คำจอง{item.sourcePeriods.map(thaiMonthLabel).join(", ")}</span></>}
+                  </small>
                 </span>
                 <span className="queue-amount small">
                   {item.status === "READY"

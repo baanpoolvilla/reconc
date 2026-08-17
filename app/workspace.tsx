@@ -10,8 +10,10 @@ import {
   type AppSettings,
   type MatchDecision,
   type WorkspaceState,
+  ALL_PERIODS,
   DEFAULT_SETTINGS,
   applySettings,
+  scopeToPeriod,
   getServerWorkspaceState,
   getWorkspaceState,
   normalizeSettings,
@@ -64,10 +66,19 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: Tone } | null>(null);
 
-  const effective = useMemo(
+  // การกระทบยอดทำครบทุกงวดพร้อมกันเสมอ — เงินที่รับไว้เดือนหนึ่งแล้วเข้าบัญชีอีก
+  // เดือนหนึ่งจะหาคู่เจอก็ต่อเมื่อรอบคำนวณเห็นทั้งสองเดือน การเลือกงวดเป็นเรื่องของ
+  // "จะดูอะไร" ไม่ใช่ "จะคำนวณจากอะไร" จึงเกิดขึ้นทีหลังเสมอ
+  const all = useMemo(
     () => applySettings(raw, stored.settings, stored.decisions),
     [raw, stored.settings, stored.decisions],
   );
+
+  const periods = raw.meta.periods ?? [];
+  const [chosenPeriod, setChosenPeriod] = useState("");
+  // เปิดมาให้เห็นงวดล่าสุดก่อน คือรอบที่คนกำลังปิดอยู่จริง ๆ
+  const period = chosenPeriod || raw.meta.period || ALL_PERIODS;
+  const effective = useMemo(() => scopeToPeriod(all, period), [all, period]);
 
   useEffect(() => {
     const sync = () => {
@@ -136,6 +147,10 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
     raw,
     dataset,
     effective,
+    all,
+    period,
+    periods,
+    setPeriod: setChosenPeriod,
     settings: stored.settings,
     decisions: stored.decisions,
     online: stored.online,
@@ -162,7 +177,11 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
 
           <div className="side-org">
             <b>{orgName}</b>
-            <small>{raw.meta.period ? thaiMonthLabel(raw.meta.period) : "ยังไม่มีรอบบัญชี"}</small>
+            <small>
+              {!periods.length ? "ยังไม่มีรอบบัญชี"
+                : period === ALL_PERIODS ? `ทุกงวด · ${periods.length} เดือน`
+                : thaiMonthLabel(period)}
+            </small>
           </div>
 
           <nav aria-label="เมนูหลัก">
@@ -192,6 +211,18 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
         <main>
           <header className="topbar">
             <div className="topbar-brand"><span className="brand-mark"><i /><i /><i /></span><b>ClearClose</b></div>
+            {periods.length > 0 && (
+              <label className="period-picker">
+                <span>งวด</span>
+                <select value={period} onChange={(event) => setChosenPeriod(event.target.value)}>
+                  {periods.slice().reverse().map((item) => (
+                    <option key={item} value={item}>{thaiMonthLabel(item)}</option>
+                  ))}
+                  <option value={ALL_PERIODS}>ทุกงวดรวมกัน</option>
+                </select>
+              </label>
+            )}
+
             <div className="topbar-status">
               {hasData && (openWork > 0
                 ? <span className="work-chip"><i className="dot amber" />เหลืองานค้าง {openWork.toLocaleString("en-US")} รายการ</span>
