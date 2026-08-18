@@ -477,3 +477,40 @@ test("งวดที่ยังไม่มี Statement ต้องไม่
   const july = scopeToPeriod(applySettings(dataset, DEFAULT_SETTINGS, []), "2026-07");
   assert.equal(july.dataset.reconciliation.summary.missingStatements, 0);
 });
+
+test("ยอดของเอกสารในหน้าตั้งค่าถูกตัดตามงวด การ์ดจึงบวกกันลงตัว", () => {
+  // การ์ดสามใบคือ "ในเอกสาร" = "ไม่นับ" + "เข้าสู่การกระทบยอด" ถ้าใบแรกนับทุกงวด
+  // แต่สองใบหลังนับงวดเดียว ตัวเลขบนจอเดียวกันจะขัดกันเอง
+  const receiptIn = (period, id, group) => ({
+    id, sourceRow: 1, date: `${period}-10`, kind: "RECEIVE", method: "KbankGL987", amountSatang: 100000,
+    reservationNo: id, channelReservationNo: "", channel: "", guest: "", group,
+    roomType: "", roomNumber: "", checkIn: `${period}-10`, checkOut: `${period}-10`, note: "",
+  });
+
+  const dataset = {
+    meta: { generatedAt: "", period: "2026-08", periods: ["2026-07", "2026-08"], rulesetVersion: "x", sources: [{ kind: "collection_report", name: "c.xlsx", rows: 4 }] },
+    bookings: [],
+    receipts: [
+      receiptIn("2026-07", "JUL-KEEP", "Baanpool"),
+      receiptIn("2026-07", "JUL-DROP", "Medina-บางแสน"),
+      receiptIn("2026-08", "AUG-KEEP", "Baanpool"),
+      receiptIn("2026-08", "AUG-DROP", "Medina-หัวหิน"),
+    ],
+    statements: [],
+    reconciliation: { rulesetVersion: "x", accounts: [], groups: [], exceptions: [], outOfScope: [], staleDecisions: [], summary: {} },
+  };
+
+  const all = applySettings(dataset, DEFAULT_SETTINGS, []);
+  assert.equal(all.sourceReceiptCount, 4, "ทุกงวดรวมกันคือสี่รายการ");
+
+  const august = scopeToPeriod(all, "2026-08");
+  assert.equal(august.sourceReceiptCount, 2, "งวดเดียวต้องนับเฉพาะงวดนั้น");
+  assert.equal(august.excluded.length, 1);
+  assert.equal(august.dataset.receipts.length, 1);
+  assert.equal(
+    august.excluded.length + august.dataset.receipts.length,
+    august.sourceReceiptCount,
+    "ไม่นับ + เข้าสู่การกระทบยอด ต้องเท่ากับในเอกสารเสมอ",
+  );
+  assert.equal(august.sourceReceiptSatang, 200000);
+});
