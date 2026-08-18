@@ -5,7 +5,7 @@
 // There is no demo, seeded, bundled or hand-written data anywhere in the app.
 
 /** MANUAL และ OTA คือกลุ่มที่คนกดยืนยันเอง ไม่ใช่กฎอัตโนมัติ */
-export type MatchType = "1:1" | "N:1" | "1:N" | "MANUAL" | "OTA";
+export type MatchType = "1:1" | "N:1" | "1:N" | "1:1+DEPOSIT" | "MANUAL" | "OTA";
 export type Severity = "high" | "medium" | "low";
 
 export type Booking = {
@@ -156,9 +156,18 @@ export type MatchGroup = {
   sourcePeriods: string[];
   rulesPassed: RuleCheck[];
   decision: GroupDecision | null;
+  /** ยอดค่าห้องตามรายงานรับเงิน — ไม่เคยถูกบวกค่าประกันเข้าไป */
   receiptSatang: number;
+  /** ยอดเงินเข้าตาม statement — ไม่เคยถูกแก้ */
   bankSatang: number;
+  /** ค่าประกันที่อธิบายส่วนต่างของกลุ่มนี้ · 0 เมื่อกลุ่มไม่เกี่ยวกับค่าประกัน */
+  depositSatang: number;
+  /** ยอดเงินเข้าหลังหักค่าประกัน คือยอดที่เทียบกับค่าห้องได้ตรง ๆ */
+  comparableBankSatang: number;
+  /** ผลต่างที่ยังอธิบายไม่ได้ — ศูนย์เมื่อกลุ่มลงตัว */
   deltaSatang: number;
+  /** ผลต่างดิบระหว่างเอกสารสองฝั่ง ก่อนหักคำอธิบายใด ๆ ออก */
+  rawDeltaSatang: number;
   receipts: GroupReceipt[];
   lines: GroupLine[];
 };

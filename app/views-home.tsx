@@ -189,9 +189,12 @@ export function Report() {
   const { accounts, summary, groups, outOfScope } = dataset.reconciliation;
   const [account, setAccount] = useState("all");
 
-  const byType = (["1:1", "N:1", "1:N", "MANUAL", "OTA"] as const).map((type) => ({
+  const byType = (["1:1", "N:1", "1:N", "1:1+DEPOSIT", "MANUAL", "OTA"] as const).map((type) => ({
     type,
-    label: { "1:1": "ระบบจับ 1 ต่อ 1", "N:1": "ระบบจับ หลายต่อ 1", "1:N": "ระบบจับ 1 ต่อหลาย", MANUAL: "คนยืนยันเอง", OTA: "แตกยอด OTA" }[type],
+    label: {
+      "1:1": "ระบบจับ 1 ต่อ 1", "N:1": "ระบบจับ หลายต่อ 1", "1:N": "ระบบจับ 1 ต่อหลาย",
+      "1:1+DEPOSIT": "ตรง พร้อมค่าประกัน", MANUAL: "คนยืนยันเอง", OTA: "แตกยอด OTA",
+    }[type],
     groups: groups.filter((group) => group.type === type),
   })).filter((row) => row.groups.length);
 
@@ -200,14 +203,14 @@ export function Report() {
   const exportCsv = () => {
     const header = [
       "กลุ่ม", "รูปแบบ", "วันที่", "บัญชี", "เลขที่จอง", "ผู้จอง", "ช่องทางรับเงิน",
-      "ยอดที่รับมา", "ยอดเงินเข้า", "ผลต่าง", "เหตุผลของผลต่าง", "หมายเหตุ", "ยืนยันเมื่อ",
+      "ยอดที่รับมา", "ยอดเงินเข้า", "ค่าประกัน", "ผลต่าง", "เหตุผลของผลต่าง", "หมายเหตุ", "ยืนยันเมื่อ",
     ];
     const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const money = (satang: number) => (satang / 100).toFixed(2);
     const rows = visible.flatMap((group) => group.receipts.map((receipt) => [
       group.id, group.type, group.date, group.account,
       receipt.reservationNo, receipt.guest, receipt.method,
-      money(receipt.amountSatang), money(group.bankSatang), money(group.deltaSatang),
+      money(receipt.amountSatang), money(group.bankSatang), money(group.depositSatang ?? 0), money(group.deltaSatang),
       group.decision?.reasonLabel ?? "", group.decision?.note ?? "", group.decision?.decidedAt ?? "",
     ].map(escape).join(",")));
 
@@ -325,11 +328,25 @@ export function Report() {
                     <b>{group.receipts.map((row) => row.guest || row.reservationNo).slice(0, 2).join(", ")}</b>
                     {group.receipts.length > 2 && <small className="block">และอีก {group.receipts.length - 2} รายการ</small>}
                   </td>
-                  <td>{baht(group.receiptSatang)}</td>
-                  <td><strong>{baht(group.bankSatang)}</strong></td>
+                  <td>
+                    {baht(group.receiptSatang)}
+                    {group.depositSatang > 0 && <small className="block">ค่าห้อง ไม่รวมค่าประกัน</small>}
+                  </td>
+                  <td>
+                    <strong>{baht(group.bankSatang)}</strong>
+                    {/* จำนวนค่าประกันอ่านจากกลุ่มเสมอ ไม่ใช่จากตัวเลขที่พิมพ์ไว้ในหน้าจอ
+                        เปลี่ยนค่าในหน้าตั้งค่าแล้วบรรทัดนี้เปลี่ยนตามทันที */}
+                    {group.depositSatang > 0 && (
+                      <small className="block">รวมค่าประกัน {baht(group.depositSatang)}</small>
+                    )}
+                  </td>
                   <td className={group.deltaSatang === 0 ? "zero-delta" : "negative"}>{baht(group.deltaSatang)}</td>
                   <td>
-                    <Pill tone={group.decision ? "amber" : "green"}>{group.decision ? (group.type === "OTA" ? "แตกยอด OTA" : "คนยืนยัน") : group.type}</Pill>
+                    <Pill tone={group.decision ? "amber" : "green"}>
+                      {group.decision
+                        ? (group.type === "OTA" ? "แตกยอด OTA" : "คนยืนยัน")
+                        : group.type === "1:1+DEPOSIT" ? "ตรง พร้อมค่าประกัน" : group.type}
+                    </Pill>
                     {group.decision?.reasonLabel && <small className="block">{group.decision.reasonLabel}</small>}
                   </td>
                 </tr>

@@ -460,3 +460,10 @@ td small.block { display: block; margin-top: 3px; color: var(--muted); font-size
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ช่องกรอกเงินเป็นบาทในหน้าตั้งค่า — ตัวเลขชิดขวาเหมือนยอดเงินทุกที่ในระบบ */
+.baht-field { display: inline-flex; align-items: center; gap: 8px; }
+.baht-field input { width: 120px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 11px; background: white; font: 700 15px var(--sans); color: inherit; text-align: right; }
+.baht-field input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.baht-field input:disabled { opacity: .55; cursor: not-allowed; }
+.baht-field em { font-size: 13px; font-style: normal; color: var(--muted); font-weight: 600; }

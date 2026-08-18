@@ -9,7 +9,13 @@ export const SETTINGS_STORAGE_KEY = "clearclose.settings.v1";
 export const DECISIONS_STORAGE_KEY = "clearclose.decisions.v1";
 export const SETTINGS_VERSION: number = core.SETTINGS_VERSION;
 
-export type MatchOptions = { maxGroupSize: number; allowManyToOne: boolean; allowOneToMany: boolean };
+export type MatchOptions = {
+  maxGroupSize: number;
+  allowManyToOne: boolean;
+  allowOneToMany: boolean;
+  /** ค่าประกันวัน Check-in เป็นสตางค์ — กฎ R06 อ่านจำนวนจากที่นี่ ไม่มีค่าใดฝังในเครื่องมือจับคู่ */
+  securityDepositSatang: number;
+};
 
 export type SettlementSettings = {
   enabled: boolean;

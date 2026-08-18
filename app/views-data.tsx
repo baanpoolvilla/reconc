@@ -523,6 +523,21 @@ export function Settings() {
               </div>
             </div>
             <div className="settings-field">
+              <span>
+                <b>ค่าประกันวัน Check-in</b>
+                <small>
+                  จำนวนเงินที่ลูกค้าโอนเพิ่มจากค่าห้องในวัน Check-in ·
+                  ระบบจับคู่ให้เมื่อเงินเข้าเท่ากับค่าห้องบวกจำนวนนี้พอดี และวันที่รับเงินกับวันที่เงินเข้าตรงกับวัน Check-in
+                </small>
+              </span>
+              <BahtField
+                label="ค่าประกันวัน Check-in"
+                satang={settings.matching.securityDepositSatang}
+                disabled={busy}
+                onCommit={(next) => patchMatching({ securityDepositSatang: next })}
+              />
+            </div>
+            <div className="settings-field">
               <span><b>จำนวนแถวสูงสุดในหน้าค้นหา</b><small>ตารางยาวเกินไปทำให้หน้าจอหน่วง · ไฟล์ CSV ที่ส่งออกได้ครบทุกแถวเสมอ</small></span>
               <div className="segmented">
                 {[100, 300, 600, 1000].map((limit) => (
@@ -567,6 +582,60 @@ function FacetPanel({ title, hint, facets, selected, onToggle, onClear, disabled
         })}
       </div>
     </section>
+  );
+}
+
+/**
+ * ช่องกรอกเงินเป็นบาท ที่เก็บค่าเป็นสตางค์
+ *
+ * บันทึกตอนออกจากช่องหรือกด Enter ไม่ใช่ทุกตัวอักษรที่พิมพ์ — การบันทึกหนึ่งครั้ง
+ * คือการเขียนลงเซิร์ฟเวอร์แล้วกระทบยอดใหม่ทั้งระบบ พิมพ์ "5000" จึงต้องไม่กลายเป็น
+ * ห้ารอบที่ค่าประกันเป็น 5, 50, 500, 5000 ตามลำดับ
+ *
+ * รับเฉพาะจำนวนเต็มตั้งแต่ 1 บาทขึ้นไป ค่าที่ใช้ไม่ได้จะเด้งกลับเป็นค่าที่บันทึกไว้
+ * แทนที่จะบันทึกของเสีย
+ */
+function BahtField({ label, satang, disabled, onCommit }: {
+  label: string;
+  satang: number;
+  disabled: boolean;
+  onCommit: (satang: number) => void;
+}) {
+  const asBaht = (value: number) => String(Math.round(value / 100));
+  const [draft, setDraft] = useState(asBaht(satang));
+  const [touched, setTouched] = useState(false);
+
+  // ค่าที่เซิร์ฟเวอร์ตอบกลับมาเป็นความจริง เมื่อผู้ใช้ไม่ได้กำลังพิมพ์อยู่
+  const shown = touched ? draft : asBaht(satang);
+
+  const commit = () => {
+    setTouched(false);
+    const baht = Number(draft);
+    if (!Number.isFinite(baht) || !Number.isInteger(baht) || baht < 1) {
+      setDraft(asBaht(satang));
+      return;
+    }
+    const next = baht * 100;
+    setDraft(String(baht));
+    if (next !== satang) onCommit(next);
+  };
+
+  return (
+    <span className="baht-field">
+      <input
+        type="number"
+        min={1}
+        step={1}
+        inputMode="numeric"
+        aria-label={label}
+        value={shown}
+        disabled={disabled}
+        onChange={(event) => { setTouched(true); setDraft(event.target.value); }}
+        onBlur={commit}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }}
+      />
+      <em>บาท</em>
+    </span>
   );
 }
 
