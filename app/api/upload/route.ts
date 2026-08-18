@@ -1,4 +1,4 @@
-import { DOCUMENT_KINDS, detectDocumentKind, parseDocument } from "../../../lib/parsers/documents.mjs";
+import { DOCUMENT_KINDS, detectDocumentKind, isAmbiguousDocumentName, parseDocument } from "../../../lib/parsers/documents.mjs";
 import { getDb, ensureSchema } from "../../../lib/db/client.mjs";
 import {
   recordAudit,
@@ -65,11 +65,21 @@ export async function POST(request: Request) {
   const oversized = files.find((file) => file.size > MAX_BYTES);
   if (oversized) return Response.json({ error: `${oversized.name} ใหญ่เกิน 25 MB` }, { status: 413 });
 
+  // ชื่อที่เข้าได้สองชนิดพร้อมกันต้องบอกให้ชัดว่าคลุมเครือ ไม่ใช่บอกว่า "ไม่รู้จัก"
+  // ซึ่งจะทำให้คนไปแก้ผิดจุด
+  const ambiguous = files.filter((file) => isAmbiguousDocumentName(file.name));
+  if (ambiguous.length) {
+    return Response.json(
+      { error: `ชื่อไฟล์กำกวม: ${ambiguous.map((file) => file.name).join(", ")} — ชื่อเดียวเข้าได้หลายชนิด กรุณาตั้งชื่อให้เหลือเลขบัญชีเดียว` },
+      { status: 400 },
+    );
+  }
+
   const unknown = files.filter((file) => !detectDocumentKind(file.name));
   if (unknown.length) {
-    const expected = Object.values(DOCUMENT_KINDS).map((spec) => spec.label).join(", ");
+    const expected = Object.values(DOCUMENT_KINDS).map((spec) => `${spec.label} (${spec.pattern})`).join(" · ");
     return Response.json(
-      { error: `ไม่รู้จักไฟล์: ${unknown.map((file) => file.name).join(", ")} — ระบบรับเฉพาะ ${expected} และชื่อไฟล์ต้องเป็นรูปแบบเดิมที่ระบบต้นทางออกให้` },
+      { error: `ไม่รู้จักไฟล์: ${unknown.map((file) => file.name).join(", ")} — ระบบดูชนิดเอกสารจากชื่อไฟล์ ต้องเข้ารูปแบบใดรูปแบบหนึ่งนี้: ${expected}` },
       { status: 400 },
     );
   }

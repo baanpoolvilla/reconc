@@ -154,8 +154,8 @@ const statusLabel = (status: string) => ({
 const requiredDocuments = [
   { kind: "ledger", label: "บัญชีแยกประเภท", detail: "ไฟล์ Excel ที่มีคอลัมน์ Reservation Creation Time", pattern: "*บัญชีแยกประเภท*.xlsx" },
   { kind: "collection", label: "รายงานการรับเงิน", detail: "ไฟล์ Excel ที่มีคอลัมน์ Date, Payment Method, Amount", pattern: "*รายงานการรับเงิน*.xlsx" },
-  { kind: "statement885", label: "Statement บัญชี 885", detail: "PDF จาก K BIZ", pattern: "885*.pdf" },
-  { kind: "statement987", label: "Statement บัญชี 987", detail: "PDF จาก K BIZ", pattern: "987*.pdf" },
+  { kind: "statement885", label: "Statement บัญชี 885", detail: "PDF จาก K BIZ · ชื่อไฟล์ต้องมีเลข 885 อยู่", pattern: "*885*.pdf" },
+  { kind: "statement987", label: "Statement บัญชี 987", detail: "PDF จาก K BIZ · ชื่อไฟล์ต้องมีเลข 987 อยู่", pattern: "*987*.pdf" },
 ];
 
 const sourceKindToDocument: Record<string, string> = {
