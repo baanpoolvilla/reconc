@@ -60,3 +60,38 @@ test("ทุกชนิดมีรูปแบบชื่อที่เอ�
   }
   assert.equal(DOCUMENT_KINDS.statement885.pattern, "*885*.pdf");
 });
+
+// ── ไฟล์ที่ผิดรูปแบบ ────────────────────────────────────────────────────────
+//
+// ชื่อไฟล์ถูกไม่ได้แปลว่าข้างในถูก ตัวอ่านต้องบอกให้คนแก้ถูกจุด ไม่ใช่พังเป็น
+// ข้อความของภาษาโปรแกรม — บั๊กจริงที่เจอคือ PDF ที่อ่านข้อความไม่ออกทำให้เกิด
+// "undefined is not iterable" ซึ่งขึ้นหน้าจอผู้ใช้ว่า "e is not iterable"
+
+test("PDF ที่ไม่ใช่ Statement ของ K BIZ บอกได้ว่าต้องใช้ไฟล์แบบไหน", async () => {
+  const { parseDocument } = await import("../lib/parsers/documents.mjs");
+  const notAStatement = Buffer.from("%PDF-1.4\nอะไรสักอย่าง\n%%EOF", "utf8");
+
+  assert.throws(
+    () => parseDocument("statement885", notAStatement, "Statement_885_สิงหาคม.pdf"),
+    (error) => {
+      assert.doesNotMatch(error.message, /is not iterable|undefined|null/, "ต้องไม่ใช่ข้อความของภาษาโปรแกรม");
+      assert.match(error.message, /Statement_885_สิงหาคม\.pdf/, "ต้องบอกว่าไฟล์ไหน");
+      assert.match(error.message, /K BIZ/, "ต้องบอกว่าต้องใช้ไฟล์แบบไหนแทน");
+      return true;
+    },
+  );
+});
+
+test("ไฟล์ที่ไม่ใช่ .xlsx จริง บอกได้ว่าผิดตรงไหน", async () => {
+  const { parseDocument } = await import("../lib/parsers/documents.mjs");
+  const notAWorkbook = Buffer.from("ไม่ใช่ zip", "utf8");
+
+  assert.throws(
+    () => parseDocument("collection", notAWorkbook, "รายงานการรับเงิน.xlsx"),
+    (error) => {
+      assert.doesNotMatch(error.message, /central directory|ZIP/i, "ต้องไม่พูดภาษาของ zip");
+      assert.match(error.message, /\.xlsx/);
+      return true;
+    },
+  );
+});

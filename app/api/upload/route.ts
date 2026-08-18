@@ -1,4 +1,4 @@
-import { DOCUMENT_KINDS, detectDocumentKind, isAmbiguousDocumentName, parseDocument } from "../../../lib/parsers/documents.mjs";
+import { detectDocumentKind, documentPatterns, isAmbiguousDocumentName, parseDocument } from "../../../lib/parsers/documents.mjs";
 import { getDb, ensureSchema } from "../../../lib/db/client.mjs";
 import {
   recordAudit,
@@ -77,9 +77,8 @@ export async function POST(request: Request) {
 
   const unknown = files.filter((file) => !detectDocumentKind(file.name));
   if (unknown.length) {
-    const expected = Object.values(DOCUMENT_KINDS).map((spec) => `${spec.label} (${spec.pattern})`).join(" · ");
     return Response.json(
-      { error: `ไม่รู้จักไฟล์: ${unknown.map((file) => file.name).join(", ")} — ระบบดูชนิดเอกสารจากชื่อไฟล์ ต้องเข้ารูปแบบใดรูปแบบหนึ่งนี้: ${expected}` },
+      { error: `ไม่รู้จักไฟล์: ${unknown.map((file) => file.name).join(", ")} — ระบบดูชนิดเอกสารจากชื่อไฟล์ ต้องเข้ารูปแบบใดรูปแบบหนึ่งนี้: ${documentPatterns()}` },
       { status: 400 },
     );
   }
@@ -93,7 +92,19 @@ export async function POST(request: Request) {
       const kind = detectDocumentKind(file.name) as string;
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      const parsed = parseDocument(kind, buffer, file.name);
+
+      // ตัวอ่านพังได้เพราะไฟล์ผิดรูปแบบ ซึ่งเป็นเรื่องของไฟล์ใบนั้นใบเดียว ข้อความ
+      // ที่ไม่บอกว่าเป็นไฟล์ไหนทำให้คนไล่หาไม่ถูกว่าต้องไปแก้อะไร
+      let parsed;
+      try {
+        parsed = parseDocument(kind, buffer, file.name);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "อ่านไฟล์ไม่สำเร็จ";
+        return Response.json(
+          { error: `อ่าน ${file.name} ไม่สำเร็จ · ${reason}`, failedFile: file.name },
+          { status: 400 },
+        );
+      }
 
       // งวดที่ไฟล์นี้ครอบคลุมมาจากวันที่ในแถวของมันเอง ไม่ได้ให้ใครเลือกตอนอัปโหลด
       // และการเขียนลงตารางแทนที่เฉพาะงวดเหล่านี้ เดือนอื่นไม่ถูกแตะ

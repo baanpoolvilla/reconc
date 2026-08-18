@@ -467,3 +467,17 @@ td small.block { display: block; margin-top: 3px; color: var(--muted); font-size
 .baht-field input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .baht-field input:disabled { opacity: .55; cursor: not-allowed; }
 .baht-field em { font-size: 13px; font-style: normal; color: var(--muted); font-weight: 600; }
+
+/* ไฟล์ที่เลือกไว้ก่อนกดอัปโหลด — ต้องเห็นว่าไฟล์เข้าจริงและระบบอ่านเป็นเอกสารอะไร */
+.picked-files { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: white; overflow: hidden; }
+.picked-files > header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--slate-soft); }
+.picked-files > header b { flex: 1; font-size: 13px; }
+.picked-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.picked-row:last-of-type { border-bottom: 0; }
+.picked-row.bad { background: var(--red-soft); }
+.picked-row p { flex: 1; min-width: 0; margin: 0; }
+.picked-row p b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picked-row p small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.picked-files .table-note { padding: 8px 14px 12px; margin: 0; }
+.doc-grid article.waiting { border-color: var(--blue); background: var(--blue-soft); }
+.doc-check.waiting { background: var(--blue); color: white; }

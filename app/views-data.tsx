@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, SearchBox, Stat, Switch, Tabs, useWorkspace } from "./ui";
 import { type Booking, type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
+import { DOCUMENT_KINDS, detectDocumentKind, isAmbiguousDocumentName } from "../lib/document-names.mjs";
 import {
   type AppSettings,
   type Facet,
@@ -151,12 +152,9 @@ const statusLabel = (status: string) => ({
 
 // ── นำเข้าเอกสาร ──────────────────────────────────────────────────────────────
 
-const requiredDocuments = [
-  { kind: "ledger", label: "บัญชีแยกประเภท", detail: "ไฟล์ Excel ที่มีคอลัมน์ Reservation Creation Time", pattern: "*บัญชีแยกประเภท*.xlsx" },
-  { kind: "collection", label: "รายงานการรับเงิน", detail: "ไฟล์ Excel ที่มีคอลัมน์ Date, Payment Method, Amount", pattern: "*รายงานการรับเงิน*.xlsx" },
-  { kind: "statement885", label: "Statement บัญชี 885", detail: "PDF จาก K BIZ · ชื่อไฟล์ต้องมีเลข 885 อยู่", pattern: "*885*.pdf" },
-  { kind: "statement987", label: "Statement บัญชี 987", detail: "PDF จาก K BIZ · ชื่อไฟล์ต้องมีเลข 987 อยู่", pattern: "*987*.pdf" },
-];
+const requiredDocuments = Object.entries(DOCUMENT_KINDS).map(([kind, spec]) => ({
+  kind, label: spec.label, detail: spec.detail, pattern: spec.pattern,
+}));
 
 const sourceKindToDocument: Record<string, string> = {
   ledger: "ledger", collection_report: "collection",
@@ -170,11 +168,45 @@ type StoredDocument = {
   size_bytes: number; row_count: number; uploaded_at: string; has_file: boolean;
 };
 
+type PickedFile = { file: File; kind: string | null; problem: string | null };
+
 export function Upload() {
   const { raw, online, period, periods, setPeriod } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [documents, setDocuments] = useState<StoredDocument[] | null>(null);
+  const [picked, setPicked] = useState<PickedFile[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // อ่านชื่อไฟล์ที่เพิ่งเลือกทันทีในเบราว์เซอร์ ด้วยกฎชุดเดียวกับที่เซิร์ฟเวอร์ใช้
+  // ผู้ใช้จึงเห็นตั้งแต่ก่อนกดอัปโหลดว่าไฟล์เข้าจริงไหม และจะไปเป็นเอกสารชนิดไหน
+  const inspect = (files: File[]): PickedFile[] => {
+    const seen = new Map<string, number>();
+    for (const file of files) {
+      const kind = detectDocumentKind(file.name);
+      if (kind) seen.set(kind, (seen.get(kind) ?? 0) + 1);
+    }
+    return files.map((file) => {
+      const kind = detectDocumentKind(file.name);
+      const problem = isAmbiguousDocumentName(file.name)
+        ? "ชื่อเข้าได้หลายชนิด ต้องแก้ชื่อให้เหลือเลขบัญชีเดียว"
+        : !kind ? "ไม่รู้จักชนิดเอกสารจากชื่อนี้"
+        : file.size === 0 ? "ไฟล์ว่าง"
+        : file.size > 25 * 1024 * 1024 ? "ใหญ่เกิน 25 MB"
+        : (seen.get(kind) ?? 0) > 1 ? "เลือกเอกสารชนิดนี้มาซ้ำกันหลายไฟล์"
+        : null;
+      return { file, kind, problem };
+    });
+  };
+
+  const clearPicked = () => {
+    setPicked([]);
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const blocked = picked.some((item) => item.problem);
+  // ชนิดที่กำลังจะอัปโหลด ใช้ทำให้การ์ดสี่ใบด้านบนขยับตามสิ่งที่เพิ่งเลือก
+  const pending = new Set(picked.filter((item) => item.kind && !item.problem).map((item) => item.kind as string));
 
   // เอกสารครบหรือยัง เป็นคำถามรายงวด ไม่ใช่คำถามของทั้งระบบ
   const inPeriod = raw.meta.sources.filter((item) => !item.period || item.period === period);
@@ -208,6 +240,7 @@ export function Upload() {
       setResult(payload);
       if (response.ok) {
         form.reset();
+        clearPicked();
         window.setTimeout(() => window.location.reload(), 1200);
       }
     } catch (error) {
@@ -239,11 +272,22 @@ export function Upload() {
         <div className="doc-grid">
           {requiredDocuments.map((file) => {
             const ready = loaded.has(file.kind);
+            const waiting = pending.has(file.kind);
             const stored = inPeriod.find((item) => (sourceKindToDocument[item.kind] ?? item.kind) === file.kind);
+            const chosen = picked.find((item) => item.kind === file.kind && !item.problem);
             return (
-              <article key={file.kind} className={ready ? "ready" : ""}>
-                <span className={`doc-check ${ready ? "ready" : ""}`}>{ready ? "✓" : "+"}</span>
-                <p><b>{file.label}</b><small>{ready ? `${stored?.name} · ${stored?.rows.toLocaleString("en-US")} แถว` : file.detail}</small></p>
+              <article key={file.kind} className={waiting ? "waiting" : ready ? "ready" : ""}>
+                <span className={`doc-check ${waiting ? "waiting" : ready ? "ready" : ""}`}>
+                  {waiting ? "↑" : ready ? "✓" : "+"}
+                </span>
+                <p>
+                  <b>{file.label}</b>
+                  <small>
+                    {waiting ? `พร้อมอัปโหลด · ${chosen?.file.name}`
+                      : ready ? `${stored?.name} · ${stored?.rows.toLocaleString("en-US")} แถว`
+                      : file.detail}
+                  </small>
+                </p>
                 <code>{file.pattern}</code>
               </article>
             );
@@ -252,18 +296,56 @@ export function Upload() {
 
         <form className="upload-form" onSubmit={submit}>
           <label className="drop-zone">
-            <input name="files" type="file" multiple accept=".xlsx,.pdf" disabled={!online || busy} />
+            <input
+              ref={fileInput}
+              name="files"
+              type="file"
+              multiple
+              accept=".xlsx,.pdf"
+              disabled={!online || busy}
+              onChange={(event) => setPicked(inspect(Array.from(event.target.files ?? [])))}
+            />
             <span>＋</span>
             <b>เลือกไฟล์ หรือลากไฟล์มาวางตรงนี้</b>
             <small>เลือกพร้อมกันได้ทั้งสี่ไฟล์ · ระบบดูจากชื่อไฟล์ว่าเป็นเอกสารชนิดใด · ไม่เกิน 25 MB ต่อไฟล์</small>
           </label>
+
+          {/* ไฟล์ที่เลือกไว้ ต้องเห็นก่อนกดอัปโหลดว่ามันเข้ามาจริงและระบบอ่านมันเป็นอะไร */}
+          {picked.length > 0 && (
+            <div className="picked-files">
+              <header>
+                <b>เลือกไว้ {picked.length} ไฟล์</b>
+                <button type="button" className="text-button" onClick={clearPicked} disabled={busy}>ล้างทั้งหมด</button>
+              </header>
+              {picked.map((item) => (
+                <div key={`${item.file.name}-${item.file.size}`} className={item.problem ? "picked-row bad" : "picked-row"}>
+                  <span className={`file-icon ${item.file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "sheet"}`}>
+                    {item.file.name.toLowerCase().endsWith(".pdf") ? "P" : "X"}
+                  </span>
+                  <p>
+                    <b>{item.file.name}</b>
+                    <small>{(item.file.size / 1024).toFixed(0)} KB</small>
+                  </p>
+                  {item.problem
+                    ? <Pill tone="red">{item.problem}</Pill>
+                    : <Pill tone="green">{DOCUMENT_KINDS[item.kind as keyof typeof DOCUMENT_KINDS].label}</Pill>}
+                </div>
+              ))}
+              {blocked && (
+                <p className="table-note">แก้ชื่อไฟล์ที่ติดปัญหาก่อน แล้วเลือกใหม่อีกครั้ง</p>
+              )}
+            </div>
+          )}
           <div className="upload-actions">
             <p>
               อัปโหลดงวดใหม่ไม่ลบงวดเก่า · อัปโหลดไฟล์ชนิดเดิมของงวดเดิมซ้ำจะแทนที่เฉพาะงวดนั้น ·
               การจับคู่ที่เคยยืนยันไว้ไม่หาย
             </p>
-            <button className="primary-button" type="submit" disabled={!online || busy}>
-              {busy ? "กำลังประมวลผล…" : "อัปโหลดและกระทบยอดใหม่"}
+            <button className="primary-button" type="submit" disabled={!online || busy || blocked || !picked.length}>
+              {busy ? "กำลังประมวลผล…"
+                : blocked ? "มีไฟล์ที่ยังใช้ไม่ได้"
+                : picked.length ? `อัปโหลด ${picked.length} ไฟล์และกระทบยอดใหม่`
+                : "เลือกไฟล์ก่อน"}
             </button>
           </div>
         </form>
