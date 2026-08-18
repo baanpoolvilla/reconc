@@ -6,6 +6,7 @@ import {
   codeOfStatementKind,
   detectDocumentKind,
   isAmbiguousDocumentName,
+  inspectPickedFiles,
   isStatementKind,
   parseDocument,
   statementKind,
@@ -107,4 +108,40 @@ test("ไฟล์ที่ไม่ใช่ .xlsx จริง บอกได
       return true;
     },
   );
+});
+
+// ── ตรวจไฟล์ที่เลือกไว้ ก่อนกดอัปโหลด ───────────────────────────────────────
+
+const pick = (name, size = 1024) => ({ name, size });
+const problems = (files) => inspectPickedFiles(files).map((item) => item.problem);
+
+test("Statement หลายบัญชีในครั้งเดียวคือการใช้งานปกติ ไม่ใช่ไฟล์ซ้ำ", () => {
+  // บั๊กจริง: พอ PDF ทุกใบเป็นชนิด statement เหมือนกัน ตัวเช็คซ้ำที่เขียนไว้ตอน
+  // statement885/statement987 เป็นคนละชนิด กลับหาว่าไฟล์คนละบัญชีเป็นไฟล์ซ้ำ
+  const picked = inspectPickedFiles([
+    pick("Statement_885_สิงหาคม_2569_TEST.pdf"),
+    pick("Statement_987_สิงหาคม_2569_TEST.pdf"),
+    pick("บันทึกบัญชีแยกประเภท_สิงหาคม_2569_TEST.xlsx"),
+    pick("รายงานการรับเงิน_สิงหาคม_2569_TEST.xlsx"),
+  ]);
+
+  assert.deepEqual(picked.map((item) => item.problem), [null, null, null, null]);
+  assert.deepEqual(picked.map((item) => item.kind), ["statement", "statement", "ledger", "collection"]);
+});
+
+test("เอกสารที่มีได้ใบเดียวต่อรอบ ยังถูกจับได้เมื่อหยิบมาซ้ำ", () => {
+  const twoLedgers = problems([
+    pick("บันทึกบัญชีแยกประเภท (1).xlsx"),
+    pick("บันทึกบัญชีแยกประเภท (2).xlsx"),
+  ]);
+
+  assert.ok(twoLedgers.every((problem) => problem?.includes("ซ้ำ")), "สองใบแปลว่าหยิบผิด");
+  assert.deepEqual(problems([pick("รายงานการรับเงิน (1).xlsx"), pick("รายงานการรับเงิน (2).xlsx")]).filter(Boolean).length, 2);
+});
+
+test("ไฟล์ว่าง ไฟล์ใหญ่เกิน และชื่อที่ไม่รู้จัก ถูกบอกเหตุผลรายไฟล์", () => {
+  assert.equal(problems([pick("statement.pdf", 0)])[0], "ไฟล์ว่าง");
+  assert.equal(problems([pick("statement.pdf", 26 * 1024 * 1024)])[0], "ใหญ่เกิน 25 MB");
+  assert.equal(problems([pick("อะไรก็ไม่รู้.docx")])[0], "ไม่รู้จักชนิดเอกสารจากชื่อนี้");
+  assert.match(problems([pick("บัญชีแยกประเภท และ รายงานการรับเงิน.xlsx")])[0], /หลายชนิด/);
 });

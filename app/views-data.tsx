@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, SearchBox, Stat, Switch, Tabs, useWorkspace } from "./ui";
 import { type Booking, type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
-import { DOCUMENT_KINDS, detectDocumentKind, isAmbiguousDocumentName } from "../lib/document-names.mjs";
+import { DOCUMENT_KINDS, inspectPickedFiles } from "../lib/document-names.mjs";
 import {
   type AppSettings,
   type BankAccount,
@@ -192,24 +192,7 @@ export function Upload() {
 
   // อ่านชื่อไฟล์ที่เพิ่งเลือกทันทีในเบราว์เซอร์ ด้วยกฎชุดเดียวกับที่เซิร์ฟเวอร์ใช้
   // ผู้ใช้จึงเห็นตั้งแต่ก่อนกดอัปโหลดว่าไฟล์เข้าจริงไหม และจะไปเป็นเอกสารชนิดไหน
-  const inspect = (files: File[]): PickedFile[] => {
-    const seen = new Map<string, number>();
-    for (const file of files) {
-      const kind = detectDocumentKind(file.name);
-      if (kind) seen.set(kind, (seen.get(kind) ?? 0) + 1);
-    }
-    return files.map((file) => {
-      const kind = detectDocumentKind(file.name);
-      const problem = isAmbiguousDocumentName(file.name)
-        ? "ชื่อเข้าได้หลายชนิด ต้องแก้ชื่อให้เหลือเลขบัญชีเดียว"
-        : !kind ? "ไม่รู้จักชนิดเอกสารจากชื่อนี้"
-        : file.size === 0 ? "ไฟล์ว่าง"
-        : file.size > 25 * 1024 * 1024 ? "ใหญ่เกิน 25 MB"
-        : (seen.get(kind) ?? 0) > 1 ? "เลือกเอกสารชนิดนี้มาซ้ำกันหลายไฟล์"
-        : null;
-      return { file, kind, problem };
-    });
-  };
+  const inspect = (files: File[]) => inspectPickedFiles(files) as PickedFile[];
 
   const clearPicked = () => {
     setPicked([]);
@@ -219,7 +202,7 @@ export function Upload() {
   const blocked = picked.some((item) => item.problem);
   // ชนิดที่กำลังจะอัปโหลด ใช้ทำให้การ์ดสี่ใบด้านบนขยับตามสิ่งที่เพิ่งเลือก
   const pending = new Set(picked.filter((item) => item.kind && !item.problem).map((item) => item.kind as string));
-  const pendingStatements = picked.filter((item) => item.kind === "statement" && !item.problem).length;
+  const pendingStatements = picked.filter((item) => item.kind === "statement" && !item.problem);
 
   // เอกสารครบหรือยัง เป็นคำถามรายงวด ไม่ใช่คำถามของทั้งระบบ
   const inPeriod = raw.meta.sources.filter((item) => !item.period || item.period === period);
@@ -307,7 +290,7 @@ export function Upload() {
             const ready = loaded.has(file.kind);
             // ไฟล์ statement ที่เพิ่งเลือกยังไม่รู้ว่าเป็นบัญชีไหน จนกว่าจะอ่านเอกสาร
             const waiting = pending.has(file.kind)
-              || (file.kind.startsWith("statement") && pendingStatements > 0 && !loaded.has(file.kind));
+              || (file.kind.startsWith("statement") && pendingStatements.length > 0 && !loaded.has(file.kind));
             const stored = inPeriod.find((item) => (sourceKindToDocument[item.kind] ?? item.kind) === file.kind);
             const chosen = picked.find((item) => item.kind === file.kind && !item.problem);
             return (
@@ -318,7 +301,9 @@ export function Upload() {
                 <p>
                   <b>{file.label}</b>
                   <small>
-                    {waiting ? (chosen ? `พร้อมอัปโหลด · ${chosen.file.name}` : "มี Statement รออัปโหลด · ระบบจะอ่านว่าเป็นบัญชีไหนเอง")
+                    {waiting ? (chosen
+                      ? `พร้อมอัปโหลด · ${chosen.file.name}`
+                      : `${pendingStatements.length} ไฟล์รออัปโหลด · ระบบจะอ่านว่าเป็นบัญชีไหนเอง`)
                       : ready ? `${stored?.name} · ${stored?.rows.toLocaleString("en-US")} แถว`
                       : file.detail}
                   </small>
