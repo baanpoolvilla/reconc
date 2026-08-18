@@ -63,20 +63,22 @@ test("รายงานการรับเงินมีคอลัมน�
 });
 
 // ยอดคุมคือข้อพิสูจน์ว่าอ่าน statement ครบทุกบรรทัด: ยอดยกมา + เงินเข้า − เงินออก
-// ต้องลงพอดีกับยอดยกไปที่ธนาคารพิมพ์ไว้ ขาดบรรทัดเดียวก็ไม่ลงตัว
-for (const kind of ["statement885", "statement987"]) {
-  const code = kind.replace("statement", "");
-  test(`Statement ${code} อ่านออกและยอดคุมลงตัว`, found[kind] ? {} : absent, () => {
-    const statement = parseStatementBuffer(read(found[kind]), found[kind]);
+// ต้องลงพอดีกับยอดยกไปที่ธนาคารพิมพ์ไว้ ขาดบรรทัดเดียวก็ไม่ลงตัว ตัวอ่านบังคับข้อนี้
+// กับทุกธนาคารเท่ากัน จึงเป็นด่านที่ทำให้เพิ่มธนาคารใหม่ได้โดยไม่ต้องเชื่อแบบไม่มีเงื่อนไข
+const statements = files.filter((file) => DOCUMENT_KINDS.statement.matches(file));
 
-    assert.match(statement.accountNo, /^\d{3}-\d-\d{5}-\d$/, "อ่านเลขที่บัญชีไม่ได้");
-    assert.match(statement.cycle, /^\d{2}\/\d{2}\/\d{4} - \d{2}\/\d{2}\/\d{4}$/, "อ่านรอบบัญชีไม่ได้");
-    assert.equal(statement.controlDeltaSatang, 0, "ยอดคุมไม่ลงตัว แปลว่าอ่านบรรทัดไม่ครบ");
+test("Statement ทุกฉบับใน data/ อ่านออกและยอดคุมลงตัว", statements.length ? {} : absent, () => {
+  for (const name of statements) {
+    const statement = parseStatementBuffer(read(name), name);
+
+    assert.ok(statement.bank, `${name} ต้องรู้ว่าเป็นเอกสารของธนาคารไหน`);
+    assert.ok(statement.accountNo, `${name} อ่านเลขที่บัญชีไม่ได้`);
+    assert.equal(statement.controlDeltaSatang, 0, `${name} ยอดคุมไม่ลงตัว แปลว่าอ่านบรรทัดไม่ครบ`);
 
     assert.equal(statement.creditCount, statement.lines.filter((line) => line.direction === "credit").length);
     assert.equal(statement.debitCount, statement.lines.filter((line) => line.direction === "debit").length);
-    assert.ok(statement.lines.every((line) => /^\d{4}-\d{2}-\d{2}$/.test(line.date)));
-    assert.ok(statement.lines.every((line) => Number.isInteger(line.amountSatang)));
-    assert.equal(new Set(statement.lines.map((line) => line.id)).size, statement.lines.length, "รหัสบรรทัดซ้ำกัน");
-  });
-}
+    assert.ok(statement.lines.every((line) => /^\d{4}-\d{2}-\d{2}$/.test(line.date)), `${name} มีวันที่อ่านไม่ออก`);
+    assert.ok(statement.lines.every((line) => Number.isInteger(line.amountSatang)), `${name} มียอดที่ไม่ใช่จำนวนเต็มสตางค์`);
+    assert.equal(new Set(statement.lines.map((line) => line.id)).size, statement.lines.length, `${name} รหัสบรรทัดซ้ำกัน`);
+  }
+});

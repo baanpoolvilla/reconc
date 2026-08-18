@@ -6,7 +6,9 @@ import { type Booking, type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthL
 import { DOCUMENT_KINDS, detectDocumentKind, isAmbiguousDocumentName } from "../lib/document-names.mjs";
 import {
   type AppSettings,
+  type BankAccount,
   type Facet,
+  type UnmappedAccount,
   DEFAULT_SETTINGS,
   EXCLUSION_SCOPE_LABEL,
   describeFacets,
@@ -152,9 +154,12 @@ const statusLabel = (status: string) => ({
 
 // ── นำเข้าเอกสาร ──────────────────────────────────────────────────────────────
 
-const requiredDocuments = Object.entries(DOCUMENT_KINDS).map(([kind, spec]) => ({
-  kind, label: spec.label, detail: spec.detail, pattern: spec.pattern,
-}));
+// การ์ดเอกสารที่ต้องใช้ — สอง Excel คงที่ ส่วน Statement มีกี่ใบขึ้นกับบัญชีที่
+// ระบบรู้จัก ไม่ใช่จำนวนที่เขียนตายไว้ในโค้ด
+const FIXED_DOCUMENTS = [
+  { kind: "ledger", label: DOCUMENT_KINDS.ledger.label, detail: DOCUMENT_KINDS.ledger.detail, pattern: DOCUMENT_KINDS.ledger.pattern },
+  { kind: "collection", label: DOCUMENT_KINDS.collection.label, detail: DOCUMENT_KINDS.collection.detail, pattern: DOCUMENT_KINDS.collection.pattern },
+];
 
 const sourceKindToDocument: Record<string, string> = {
   ledger: "ledger", collection_report: "collection",
@@ -178,7 +183,7 @@ type StoredDocument = {
 type PickedFile = { file: File; kind: string | null; problem: string | null };
 
 export function Upload() {
-  const { raw, online, period, periods, setPeriod } = useWorkspace();
+  const { raw, online, period, periods, setPeriod, settings } = useWorkspace();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [documents, setDocuments] = useState<StoredDocument[] | null>(null);
@@ -214,10 +219,31 @@ export function Upload() {
   const blocked = picked.some((item) => item.problem);
   // ชนิดที่กำลังจะอัปโหลด ใช้ทำให้การ์ดสี่ใบด้านบนขยับตามสิ่งที่เพิ่งเลือก
   const pending = new Set(picked.filter((item) => item.kind && !item.problem).map((item) => item.kind as string));
+  const pendingStatements = picked.filter((item) => item.kind === "statement" && !item.problem).length;
 
   // เอกสารครบหรือยัง เป็นคำถามรายงวด ไม่ใช่คำถามของทั้งระบบ
   const inPeriod = raw.meta.sources.filter((item) => !item.period || item.period === period);
   const loaded = new Set(inPeriod.map((item) => sourceKindToDocument[item.kind] ?? item.kind));
+
+  // บัญชีที่ระบบรู้จัก = ที่ผูกไว้ในการตั้งค่า + ที่เคยอัปโหลด statement เข้ามาแล้ว
+  const knownAccounts = useMemo(() => {
+    const byCode = new Map<string, string>();
+    for (const statement of raw.statements) byCode.set(statement.code, statement.accountName || `บัญชี ${statement.code}`);
+    for (const account of settings.accounts) byCode.set(account.code, account.label || `บัญชี ${account.code}`);
+    return [...byCode.entries()].map(([code, label]) => ({ code, label }));
+  }, [raw.statements, settings.accounts]);
+
+  const requiredDocuments = [
+    ...FIXED_DOCUMENTS,
+    ...(knownAccounts.length
+      ? knownAccounts.map((account) => ({
+        kind: `statement${account.code}`,
+        label: `Statement บัญชี ${account.code}`,
+        detail: account.label,
+        pattern: "*.pdf",
+      }))
+      : [{ kind: "statement", label: DOCUMENT_KINDS.statement.label, detail: DOCUMENT_KINDS.statement.detail, pattern: "*.pdf" }]),
+  ];
 
   useEffect(() => {
     if (!online) return;
@@ -279,7 +305,9 @@ export function Upload() {
         <div className="doc-grid">
           {requiredDocuments.map((file) => {
             const ready = loaded.has(file.kind);
-            const waiting = pending.has(file.kind);
+            // ไฟล์ statement ที่เพิ่งเลือกยังไม่รู้ว่าเป็นบัญชีไหน จนกว่าจะอ่านเอกสาร
+            const waiting = pending.has(file.kind)
+              || (file.kind.startsWith("statement") && pendingStatements > 0 && !loaded.has(file.kind));
             const stored = inPeriod.find((item) => (sourceKindToDocument[item.kind] ?? item.kind) === file.kind);
             const chosen = picked.find((item) => item.kind === file.kind && !item.problem);
             return (
@@ -290,7 +318,7 @@ export function Upload() {
                 <p>
                   <b>{file.label}</b>
                   <small>
-                    {waiting ? `พร้อมอัปโหลด · ${chosen?.file.name}`
+                    {waiting ? (chosen ? `พร้อมอัปโหลด · ${chosen.file.name}` : "มี Statement รออัปโหลด · ระบบจะอ่านว่าเป็นบัญชีไหนเอง")
                       : ready ? `${stored?.name} · ${stored?.rows.toLocaleString("en-US")} แถว`
                       : file.detail}
                   </small>
@@ -462,6 +490,7 @@ const DOCUMENT_LABELS: Record<string, string> = {
 
 const SECTIONS = [
   { id: "exclusions", label: "รายการที่ไม่นับ" },
+  { id: "accounts", label: "บัญชีธนาคาร" },
   { id: "ota", label: "ก้อนโอน OTA" },
   { id: "matching", label: "วิธีจับคู่" },
   { id: "system", label: "ข้อมูลและระบบ" },
@@ -555,6 +584,15 @@ export function Settings() {
               disabled={!settings.exclusions.enabled || busy} />
           </div>
         </>
+      )}
+
+      {section === "accounts" && (
+        <AccountsSection
+          accounts={settings.accounts}
+          unmapped={effective.unmappedAccounts}
+          disabled={busy}
+          onChange={(accounts) => patch({ accounts })}
+        />
       )}
 
       {section === "ota" && (
@@ -658,6 +696,127 @@ export function Settings() {
       )}
 
       {section === "system" && <SystemSection onImport={(next) => void saveSettings(next)} />}
+    </>
+  );
+}
+
+/**
+ * ผูกบัญชีธนาคารกับช่องทางรับเงิน
+ *
+ * เอกสารธนาคารบอกได้แค่เลขที่บัญชี ส่วนชื่อช่องทางรับเงินที่ PMS ใช้ ("KbankGL885")
+ * ไม่มีอยู่ในเอกสารของฝั่งไหนเลย ระบบเดาไม่ได้และไม่ควรเดา — บัญชีที่ผูกผิดคือ
+ * รายการทั้งเดือนไปกระทบยอดกับบัญชีผิดใบ
+ *
+ * เพราะการผูกอยู่ตรงนี้ การเพิ่มธนาคารหรือบัญชีใหม่จึงไม่ต้องแก้โค้ด
+ */
+function AccountsSection({ accounts, unmapped, disabled, onChange }: {
+  accounts: BankAccount[];
+  unmapped: UnmappedAccount[];
+  disabled: boolean;
+  onChange: (next: BankAccount[]) => void;
+}) {
+  const [draft, setDraft] = useState<BankAccount | null>(null);
+
+  const save = (next: BankAccount) => {
+    const digits = (value: string) => value.replace(/\D/g, "");
+    const rest = accounts.filter((item) => digits(item.accountNo) !== digits(next.accountNo));
+    onChange([...rest, next].filter((item) => item.accountNo.trim() && item.method.trim()));
+    setDraft(null);
+  };
+
+  return (
+    <>
+      {unmapped.length > 0 && (
+        <Banner tone="amber" title={`มีบัญชี ${unmapped.length} ใบที่ยังไม่ได้ผูกช่องทางรับเงิน`}>
+          Statement ของบัญชีเหล่านี้อยู่ในระบบแล้ว แต่ยังจับคู่กับรายการรับเงินไม่ได้
+          จนกว่าจะบอกระบบว่าบัญชีนี้ตรงกับช่องทางรับเงินชื่ออะไรในรายงานของคุณ
+        </Banner>
+      )}
+
+      <section className="panel">
+        <PanelTitle
+          title="บัญชีธนาคารที่ผูกไว้"
+          action={<Pill tone={accounts.length ? "green" : "slate"}>{accounts.length} บัญชี</Pill>}
+        />
+        <p className="settings-lead">
+          ระบบอ่านเลขที่บัญชีจากในเอกสารเอง แต่ไม่มีทางรู้ว่าบัญชีนั้นคือช่องทางรับเงินชื่ออะไรในรายงานของ PMS
+          — ตรงนี้คือที่ที่บอกมัน · ธนาคารไหนก็เพิ่มได้ ตราบใดที่ระบบอ่านรูปแบบ Statement ของธนาคารนั้นออก
+        </p>
+
+        <div className="account-list">
+          {!accounts.length && !unmapped.length && (
+            <p className="table-note">ยังไม่มีบัญชีที่ผูกไว้ · อัปโหลด Statement แล้วบัญชีจะมาโผล่ที่นี่ให้ผูก</p>
+          )}
+
+          {accounts.map((account) => (
+            <div key={account.accountNo} className="account-row">
+              <p>
+                <b>{account.label || account.code || account.accountNo}</b>
+                <small className="mono">{account.accountNo}</small>
+              </p>
+              <span className="account-method">{account.method}</span>
+              <button
+                className="ghost-button"
+                disabled={disabled}
+                onClick={() => onChange(accounts.filter((item) => item.accountNo !== account.accountNo))}
+              >
+                เอาออก
+              </button>
+            </div>
+          ))}
+
+          {unmapped.map((account) => (
+            <div key={account.accountNo} className="account-row pending">
+              <p>
+                <b>{account.accountName || `บัญชี ${account.code}`}</b>
+                <small className="mono">{account.accountNo} · {account.bankLabel}</small>
+              </p>
+              <span className="account-method missing">ยังไม่ได้ผูก</span>
+              <button
+                className="small-primary"
+                disabled={disabled}
+                onClick={() => setDraft({ accountNo: account.accountNo, code: account.code, method: "", label: account.accountName })}
+              >
+                ผูกช่องทาง
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {draft && (
+          <div className="account-editor">
+            <b>ผูกบัญชี {draft.accountNo}</b>
+            <label>
+              <span>ช่องทางรับเงินในรายงาน</span>
+              <input
+                value={draft.method}
+                disabled={disabled}
+                placeholder="เช่น KbankGL885"
+                onChange={(event) => setDraft({ ...draft, method: event.target.value })}
+              />
+            </label>
+            <label>
+              <span>ชื่อเรียกสั้น</span>
+              <input
+                value={draft.code}
+                disabled={disabled}
+                placeholder="เช่น 885"
+                onChange={(event) => setDraft({ ...draft, code: event.target.value })}
+              />
+            </label>
+            <div className="account-editor-actions">
+              <button className="ghost-button" onClick={() => setDraft(null)} disabled={disabled}>ยกเลิก</button>
+              <button className="primary-button" disabled={disabled || !draft.method.trim()} onClick={() => save(draft)}>
+                บันทึกการผูก
+              </button>
+            </div>
+            <small>
+              ชื่อช่องทางต้องตรงกับที่พิมพ์อยู่ในคอลัมน์ Payment Method ของรายงานการรับเงิน
+              เปลี่ยนแล้วระบบกระทบยอดใหม่ทันที ไม่ต้องอัปโหลดเอกสารซ้ำ
+            </small>
+          </div>
+        )}
+      </section>
     </>
   );
 }

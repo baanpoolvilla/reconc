@@ -28,6 +28,23 @@ export type SettlementSettings = {
 export type ExclusionScope =
   | "property" | "group" | "method" | "channel" | "bookingStatus" | "keyword" | "refund" | "amount";
 
+export type BankAccount = {
+  /** เลขที่บัญชีตามที่พิมพ์บนเอกสาร — คือกุญแจที่ใช้จับคู่กับ statement */
+  accountNo: string;
+  /** ชื่อสั้นที่คนที่นี่ใช้เรียกบัญชีนี้ เช่น 885 */
+  code: string;
+  /** ช่องทางรับเงินในรายงานของ PMS เช่น KbankGL885 — ไม่มีอยู่ในเอกสารธนาคาร */
+  method: string;
+  label: string;
+};
+
+export type UnmappedAccount = {
+  accountNo: string;
+  code: string;
+  bankLabel: string;
+  accountName: string;
+};
+
 export type AppSettings = {
   version: number;
   exclusions: {
@@ -44,6 +61,7 @@ export type AppSettings = {
   };
   matching: MatchOptions;
   settlement: SettlementSettings;
+  accounts: BankAccount[];
   display: { ledgerRowLimit: number; showExcludedRows: boolean };
 };
 
@@ -126,6 +144,8 @@ export type EffectiveDataset = {
   sourceReceiptSatang: number;
   activeRuleCount: number;
   settlements: SettlementProposal[];
+  /** บัญชีที่อัปโหลดแล้วแต่ยังไม่ได้ผูกช่องทางรับเงิน — จับคู่ไม่ได้จนกว่าจะผูก */
+  unmappedAccounts: UnmappedAccount[];
 };
 
 export const DEFAULT_SETTINGS = core.DEFAULT_SETTINGS as AppSettings;

@@ -1,8 +1,10 @@
-import { detectDocumentKind, documentPatterns, isAmbiguousDocumentName, parseDocument } from "../../../lib/parsers/documents.mjs";
+import { detectDocumentKind, documentPatterns, isAmbiguousDocumentName, parseDocument, statementKind } from "../../../lib/parsers/documents.mjs";
 import { getDb, ensureSchema } from "../../../lib/db/client.mjs";
 import {
+  loadStoredSettings,
   recordAudit,
   recordDocument,
+  resolveAccount,
   replaceBookings,
   replaceReceipts,
   replaceStatement,
@@ -128,9 +130,21 @@ export async function POST(request: Request) {
     // ไฟล์ที่อ่านไม่ได้ไม่ควรกันไฟล์ที่อ่านได้ออกไปด้วย ระบบรองรับชุดเอกสารที่ยัง
     // ไม่ครบอยู่แล้ว และรายงานตรง ๆ ว่าขาดอะไร ดีกว่าบังคับให้เริ่มใหม่ทั้งชุด
     const accepted: Accepted[] = [];
+    const stored = (await loadStoredSettings(db)) as { accounts?: unknown[] } | null;
+    const accounts = (stored?.accounts ?? []) as { accountNo: string; code: string; method: string }[];
 
-    for (const { file, kind, bytes, parsed } of parsedFiles) {
+    for (const { file, kind: detected, bytes, parsed } of parsedFiles) {
       const buffer = Buffer.from(bytes);
+      let kind = detected;
+
+      // statement รู้ว่าเป็นบัญชีไหนก็ต่อเมื่ออ่านเอกสารแล้ว ชนิดที่เก็บลงฐานข้อมูล
+      // จึงตัดสินตรงนี้ ไม่ใช่ตอนดูชื่อไฟล์
+      if (parsed.statement) {
+        const account = await resolveAccount(db, parsed.statement, accounts);
+        parsed.statement.code = account.code;
+        parsed.statement.method = account.method;
+        kind = statementKind(account.code);
+      }
 
       // งวดที่ไฟล์นี้ครอบคลุมมาจากวันที่ในแถวของมันเอง ไม่ได้ให้ใครเลือกตอนอัปโหลด
       // และการเขียนลงตารางแทนที่เฉพาะงวดเหล่านี้ เดือนอื่นไม่ถูกแตะ
