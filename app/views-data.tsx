@@ -162,7 +162,14 @@ const sourceKindToDocument: Record<string, string> = {
 };
 
 type AcceptedFile = { kind: string; name: string; rows: number; periods?: string[]; fileStored?: boolean };
-type UploadResult = { runId?: string; accepted?: AcceptedFile[]; periods?: string[]; error?: string };
+type RejectedFile = { name: string; kind: string; reason: string };
+type UploadResult = {
+  runId?: string;
+  accepted?: AcceptedFile[];
+  rejected?: RejectedFile[];
+  periods?: string[];
+  error?: string;
+};
 type StoredDocument = {
   id: string; kind: string; period: string; name: string;
   size_bytes: number; row_count: number; uploaded_at: string; has_file: boolean;
@@ -350,7 +357,16 @@ export function Upload() {
           </div>
         </form>
 
-        {result?.error && <Banner tone="red" title="ไม่สำเร็จ">{result.error}</Banner>}
+        {result?.error && !result.accepted && (
+          <Banner tone="red" title="ไม่มีไฟล์ไหนนำเข้าได้เลย">
+            {result.rejected?.length
+              ? <span className="upload-reasons">
+                {result.rejected.map((item) => <span key={item.name}><b>{item.name}</b>{item.reason}</span>)}
+              </span>
+              : result.error}
+          </Banner>
+        )}
+
         {result?.accepted && (
           <Banner tone="green" title={`นำเข้าสำเร็จ ${result.accepted.length} ไฟล์ · กำลังโหลดหน้าใหม่`}>
             {result.accepted.map((item) => (
@@ -358,6 +374,16 @@ export function Upload() {
             )).join(" · ")}
           </Banner>
         )}
+
+        {/* ไฟล์ที่อ่านไม่ได้ไม่ได้กันไฟล์ที่อ่านได้ออกไป แต่ต้องบอกให้ชัดว่าอะไรไม่เข้า
+            และเพราะอะไร ไม่ใช่ปล่อยให้คนเข้าใจว่านำเข้าครบแล้ว */}
+        {result?.rejected?.length && result.accepted ? (
+          <Banner tone="amber" title={`${result.rejected.length} ไฟล์ไม่ได้ถูกนำเข้า`}>
+            <span className="upload-reasons">
+              {result.rejected.map((item) => <span key={item.name}><b>{item.name}</b>{item.reason}</span>)}
+            </span>
+          </Banner>
+        ) : null}
       </section>
 
       <ArchiveSection documents={documents} period={period} onPick={setPeriod} />

@@ -481,3 +481,8 @@ td small.block { display: block; margin-top: 3px; color: var(--muted); font-size
 .picked-files .table-note { padding: 8px 14px 12px; margin: 0; }
 .doc-grid article.waiting { border-color: var(--blue); background: var(--blue-soft); }
 .doc-check.waiting { background: var(--blue); color: white; }
+
+/* เหตุผลรายไฟล์ที่นำเข้าไม่ได้ — อ่านทีละบรรทัด ไม่ใช่ย่อหน้าเดียวยาว ๆ */
+.upload-reasons { display: grid; gap: 6px; margin-top: 4px; }
+.upload-reasons > span { display: block; font-size: 13px; }
+.upload-reasons > span b { display: block; font-size: 13px; }

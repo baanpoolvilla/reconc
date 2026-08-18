@@ -275,3 +275,19 @@ test("การตัดสินใจของผู้ตรวจอยู�
   const audit = await db.query("SELECT action FROM clearclose.audit_events WHERE entity_type = 'decision' ORDER BY id");
   assert.deepEqual(audit.map((row) => row.action), ["DECISION_SAVED", "DECISION_REMOVED"]);
 });
+
+test("ไฟล์ที่อ่านไม่ได้ต้องไม่ทิ้งแถวของไฟล์ที่อ่านได้ค้างไว้", async () => {
+  // บั๊กที่เคยมี: endpoint อ่านและเขียนสลับกันทีละไฟล์ ไฟล์ที่สองอ่านไม่ผ่านจึงตอบ
+  // 400 ทิ้งแถวของไฟล์แรกไว้ในฐานข้อมูลโดยไม่มีการกระทบยอดตามหลัง ฐานข้อมูลจึงอยู่
+  // ในสถานะที่หน้าจอไม่เคยบอก การอ่านทุกไฟล์ให้จบก่อนเขียนทำให้กรณีนี้เป็นไปไม่ได้
+  const route = await readFile(new URL("../app/api/upload/route.ts", import.meta.url), "utf8");
+
+  const parseAt = route.indexOf("parseDocument(kind");
+  const writeAt = route.indexOf("replaceBookings(db");
+  assert.ok(parseAt > 0 && writeAt > 0);
+  assert.ok(parseAt < writeAt, "ต้องอ่านให้ครบก่อนจึงเริ่มเขียน");
+
+  // และการเขียนต้องไม่มี early return คั่นกลาง ที่จะทิ้งงานค้างไว้ครึ่งทาง
+  const writePhase = route.slice(writeAt, route.indexOf("runReconciliation(db)"));
+  assert.doesNotMatch(writePhase, /return Response\.json/, "เริ่มเขียนแล้วต้องเดินจนจบและกระทบยอดเสมอ");
+});

@@ -28,6 +28,8 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 type Accepted = { kind: string; name: string; rows: number; periods: string[]; fileStored: boolean };
+type Rejected = { name: string; kind: string; reason: string };
+type ParsedDocument = ReturnType<typeof parseDocument>;
 
 async function sha256(bytes: ArrayBuffer) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -86,25 +88,49 @@ export async function POST(request: Request) {
   try {
     const db = await getDb();
     await ensureSchema(db);
-    const accepted: Accepted[] = [];
+
+    // ── รอบที่หนึ่ง · อ่านทุกไฟล์ ยังไม่เขียนอะไรลงฐานข้อมูล ──────────────
+    //
+    // ตัวอ่านเป็นฟังก์ชันบริสุทธิ์ (ไบต์เข้า แถวออก) การอ่านให้ครบก่อนจึงทำได้
+    // และต้องทำ เพราะเดิมการอ่านกับการเขียนสลับกันไปทีละไฟล์ ไฟล์ที่สองอ่านไม่ผ่าน
+    // จะทิ้งแถวของไฟล์แรกไว้ในฐานข้อมูลโดยไม่มีการกระทบยอดตามหลัง — ข้อมูลค้าง
+    // อยู่ในสถานะที่หน้าจอไม่เคยบอก
+    const parsedFiles: { file: File; kind: string; bytes: ArrayBuffer; parsed: ParsedDocument }[] = [];
+    const rejected: Rejected[] = [];
 
     for (const file of files) {
       const kind = detectDocumentKind(file.name) as string;
       const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      // ตัวอ่านพังได้เพราะไฟล์ผิดรูปแบบ ซึ่งเป็นเรื่องของไฟล์ใบนั้นใบเดียว ข้อความ
-      // ที่ไม่บอกว่าเป็นไฟล์ไหนทำให้คนไล่หาไม่ถูกว่าต้องไปแก้อะไร
-      let parsed;
       try {
-        parsed = parseDocument(kind, buffer, file.name);
+        parsedFiles.push({ file, kind, bytes, parsed: parseDocument(kind, Buffer.from(bytes), file.name) });
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "อ่านไฟล์ไม่สำเร็จ";
-        return Response.json(
-          { error: `อ่าน ${file.name} ไม่สำเร็จ · ${reason}`, failedFile: file.name },
-          { status: 400 },
-        );
+        rejected.push({
+          name: file.name,
+          kind,
+          reason: error instanceof Error ? error.message : "อ่านไฟล์ไม่สำเร็จ",
+        });
       }
+    }
+
+    // อ่านไม่ได้สักไฟล์ = ไม่มีอะไรให้เขียน บอกเหตุผลรายไฟล์แล้วจบ
+    if (!parsedFiles.length) {
+      return Response.json(
+        {
+          error: rejected.map((item) => `${item.name} · ${item.reason}`).join(" | "),
+          rejected,
+        },
+        { status: 400 },
+      );
+    }
+
+    // ── รอบที่สอง · เขียนเฉพาะไฟล์ที่อ่านผ่าน ────────────────────────────
+    //
+    // ไฟล์ที่อ่านไม่ได้ไม่ควรกันไฟล์ที่อ่านได้ออกไปด้วย ระบบรองรับชุดเอกสารที่ยัง
+    // ไม่ครบอยู่แล้ว และรายงานตรง ๆ ว่าขาดอะไร ดีกว่าบังคับให้เริ่มใหม่ทั้งชุด
+    const accepted: Accepted[] = [];
+
+    for (const { file, kind, bytes, parsed } of parsedFiles) {
+      const buffer = Buffer.from(bytes);
 
       // งวดที่ไฟล์นี้ครอบคลุมมาจากวันที่ในแถวของมันเอง ไม่ได้ให้ใครเลือกตอนอัปโหลด
       // และการเขียนลงตารางแทนที่เฉพาะงวดเหล่านี้ เดือนอื่นไม่ถูกแตะ
@@ -140,11 +166,16 @@ export async function POST(request: Request) {
       accepted.push({ kind, name: file.name, rows, periods, fileStored });
     }
 
+    if (rejected.length) {
+      await recordAudit(db, "DOCUMENT_REJECTED", "document", "", { rejected });
+    }
+
     const { id, dataset } = await runReconciliation(db);
     return Response.json({
       runId: id,
       accepted,
       periods: dataset.meta.periods,
+      rejected,
       summary: dataset.reconciliation.summary,
       sources: dataset.meta.sources,
     });
