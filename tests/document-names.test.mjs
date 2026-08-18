@@ -75,8 +75,8 @@ test("PDF ที่ไม่ใช่ Statement ของ K BIZ บอกได�
     () => parseDocument("statement885", notAStatement, "Statement_885_สิงหาคม.pdf"),
     (error) => {
       assert.doesNotMatch(error.message, /is not iterable|undefined|null/, "ต้องไม่ใช่ข้อความของภาษาโปรแกรม");
-      assert.match(error.message, /Statement_885_สิงหาคม\.pdf/, "ต้องบอกว่าไฟล์ไหน");
       assert.match(error.message, /K BIZ/, "ต้องบอกว่าต้องใช้ไฟล์แบบไหนแทน");
+      assert.doesNotMatch(error.message, /Statement_885/, "ชื่อไฟล์เป็นหน้าที่ของ route ที่เรียก ไม่ใช่ของตัวอ่าน");
       return true;
     },
   );
