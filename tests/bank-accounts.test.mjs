@@ -20,7 +20,7 @@ const statement = (overrides = {}) => ({
   code: "",
   method: "",
   accountNo: "199-1-33588-5",
-  suffix: "588",
+  suffix: "885",
   accountName: "บริษัททดสอบ จำกัด",
   bankLabel: "ธนาคารกสิกรไทย (K BIZ)",
   period: "2026-07",
@@ -94,15 +94,15 @@ test("บัญชีที่ยังไม่ผูก ใช้ช่อง�
 });
 
 test("บัญชีที่ไม่มีช่องทางเลย ถูกรายงานว่ายังไม่ได้ผูก", () => {
-  const fresh = statement({ method: "", accountNo: "111-2-33333-4", suffix: "333" });
+  const fresh = statement({ method: "", accountNo: "111-2-33333-4", suffix: "334" });
   const bound = statement({ method: "KbankGL885" });
 
   const pending = unmappedAccounts([fresh, bound], []);
   assert.equal(pending.length, 1, "เฉพาะใบที่ไม่มีช่องทางจริง ๆ");
   assert.equal(pending[0].accountNo, "111-2-33333-4");
-  assert.equal(pending[0].code, "333");
+  assert.equal(pending[0].code, "334");
 
-  const after = unmappedAccounts([fresh, bound], [{ accountNo: "111-2-33333-4", code: "333", method: "SCB-Main", label: "" }]);
+  const after = unmappedAccounts([fresh, bound], [{ accountNo: "111-2-33333-4", code: "334", method: "SCB-Main", label: "" }]);
   assert.equal(after.length, 0, "ผูกแล้วต้องหายไปจากรายการ");
 });
 
@@ -127,22 +127,22 @@ test("บัญชีที่ไม่มีเลขที่บัญชี�
 // ── ความเข้ากันได้กับข้อมูลที่มีอยู่แล้ว ────────────────────────────────────
 
 test("อัปโหลดบัญชีเดิมซ้ำ ต้องได้รหัสเดิม ไม่กลายเป็นบัญชีใบใหม่", async () => {
-  // นี่คือเส้นทางของฐานข้อมูลจริง: บัญชี 199-1-33588-5 ถูกเก็บไว้ในชื่อ "885"
-  // ซึ่งเป็นรหัสที่ไม่ได้อยู่ในเลขที่บัญชีเลย ระบบต้องจำเอาจากข้อมูลของตัวเอง
+  // ประวัติมีไว้รองรับบัญชีที่เคยถูกเก็บด้วยรหัสหรือช่องทางที่ไม่ตรงกับที่คำนวณได้
+  // เช่นเมื่อผู้ใช้เคยตั้งชื่อไว้เอง อัปโหลดรอบใหม่ต้องไม่กลายเป็นบัญชีคนละใบ
   const db = await freshDb();
   await replaceStatement(db, statement({ code: "885", method: "KbankGL885" }));
 
   const again = await resolveAccount(db, statement(), []);
-  assert.equal(again.code, "885", "ถ้ากลายเป็น 588 ข้อมูลเดือนเก่าจะแยกเป็นคนละบัญชี");
+  assert.equal(again.code, "885", "รหัสที่เคยเก็บไว้ต้องชนะ ไม่งั้นเดือนเก่าจะแยกเป็นคนละบัญชี");
   assert.equal(again.method, "KbankGL885");
   assert.equal(again.source, "history");
 });
 
 test("บัญชีใหม่ที่ยังไม่เคยเห็น ใช้เลขท้ายเป็นรหัส และเว้นช่องทางไว้", async () => {
   const db = await freshDb();
-  const found = await resolveAccount(db, statement({ accountNo: "111-2-33333-4", suffix: "333" }), []);
+  const found = await resolveAccount(db, statement({ accountNo: "111-2-33333-4", suffix: "334" }), []);
 
-  assert.equal(found.code, "333");
+  assert.equal(found.code, "334");
   assert.equal(found.method, "", "เดาช่องทางไม่ได้ ต้องให้คนผูก");
   assert.equal(found.source, "unknown");
 });
@@ -173,7 +173,7 @@ test("ผูกบัญชีแล้วรายการที่เคย�
       roomType: "", roomNumber: "", checkIn: "2026-07-10", checkOut: "2026-07-10", note: "",
     }],
     statements: [statement({
-      accountNo: "111-2-33333-4", suffix: "333", code: "333", method: "",
+      accountNo: "111-2-33333-4", suffix: "334", code: "334", method: "",
       lines: [{ id: "L1", date: "2026-07-10", time: "09:30", description: "", channel: "", detail: "", direction: "credit", amountSatang: 100000, balanceSatang: 100000, page: 1, row: 1 }],
       creditSatang: 100000, creditCount: 1, closingSatang: 100000,
     })],
@@ -186,7 +186,7 @@ test("ผูกบัญชีแล้วรายการที่เคย�
 
   const bound = applySettings(dataset, {
     ...DEFAULT_SETTINGS,
-    accounts: [{ accountNo: "111-2-33333-4", code: "333", method: "SCB-Main", label: "" }],
+    accounts: [{ accountNo: "111-2-33333-4", code: "334", method: "SCB-Main", label: "" }],
   }, []);
   assert.equal(bound.dataset.reconciliation.groups.length, 1, "ผูกแล้วจับคู่ได้ทันที ไม่ต้องอัปโหลดซ้ำ");
   assert.equal(bound.unmappedAccounts.length, 0);

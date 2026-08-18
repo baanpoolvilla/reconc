@@ -83,5 +83,15 @@ test("สั่งบัญชีไหนก็ได้ และรหัส�
   const statement = parseStatementBuffer(build({ accountNo: "025-3-66398-7" }).pdf, "other.pdf");
 
   assert.equal(statement.accountNo, "025-3-66398-7");
-  assert.equal(statement.suffix, "398");
+  assert.equal(statement.suffix, "987", "รหัสบัญชีคือเลขสามตัวท้าย ตรงกับที่คนเรียกกันและที่อยู่ในชื่อไฟล์");
+});
+
+test("รหัสบัญชีคือเลขสามตัวท้ายของเลขที่บัญชี ตรงกับที่ธนาคารตั้งชื่อไฟล์", () => {
+  // 199-1-33588-5 → 885 · 025-3-66398-7 → 987 — เลขเดียวกับที่ K BIZ ใส่ไว้หน้า
+  // ชื่อไฟล์ (885resultFile...) ระบบจึงไม่ต้องพึ่งชื่อไฟล์ให้บอกซ้ำ
+  for (const [accountNo, code] of [["199-1-33588-5", "885"], ["025-3-66398-7", "987"], ["111-2-33333-4", "334"]]) {
+    const statement = parseStatementBuffer(build({ accountNo }).pdf, "x.pdf");
+    assert.equal(statement.suffix, code, accountNo);
+    assert.ok(statement.lines.every((line) => line.id.startsWith(`${code}-`)), "รหัสบรรทัดต้องขึ้นต้นด้วยรหัสบัญชีเดียวกัน");
+  }
 });
