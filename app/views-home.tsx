@@ -12,7 +12,13 @@ import { ALL_PERIODS, DECISION_REASONS, type DecisionReason } from "../lib/setti
 
 export function Home() {
   const { dataset, effective, hasData, online, go, period, periods } = useWorkspace();
-  const { summary, exceptions } = dataset.reconciliation;
+  const { summary, exceptions, outOfScope } = dataset.reconciliation;
+
+  // ช่องทางที่มีบัญชีธนาคารอยู่แล้ว แต่ยังไม่ได้อัปโหลด statement ของงวดนี้ —
+  // ต่างจากเงินที่ OTA เก็บแทนเรา ซึ่งไม่มีบัญชีให้กระทบตั้งแต่ต้น
+  const waitingForStatement = outOfScope.filter((item) => item.reason === "MISSING_STATEMENT");
+  const waitingCount = waitingForStatement.reduce((sum, item) => sum + item.count, 0);
+  const waitingSatang = waitingForStatement.reduce((sum, item) => sum + item.amountSatang, 0);
 
   const receiptSide = exceptions.filter((item) => item.receiptId).length;
   const bankSide = exceptions.filter((item) => item.reason === "UNMATCHED_BANK_CREDIT").length;
@@ -47,6 +53,19 @@ export function Home() {
       />
 
       <Progress done={done} total={total} label="รายการที่กระทบยอดแล้ว" />
+
+      {/* ยังไม่มี statement = ยังไม่มีอะไรให้กระทบ ไม่ใช่กระทบเสร็จแล้ว
+          ความต่างนี้สำคัญพอที่จะขึ้นก่อนกล่องงานทุกใบ */}
+      {waitingForStatement.length > 0 && (
+        <Banner
+          tone="amber"
+          title={`ยังไม่ได้อัปโหลด Statement ของงวดนี้ · ${waitingCount.toLocaleString("en-US")} รายการรอกระทบยอด (${baht(waitingSatang)})`}
+          action={<button className="primary-button" onClick={() => go("upload")}>นำเข้า Statement</button>}
+        >
+          รับเงินผ่าน {waitingForStatement.map((item) => item.method).join(" · ")} แต่ยังไม่มีรายการเดินบัญชีของงวดนี้ให้เทียบ
+          จนกว่าจะอัปโหลด ตัวเลขบนหน้านี้ยังไม่ใช่ผลการกระทบยอดที่สมบูรณ์
+        </Banner>
+      )}
 
       {staleCount > 0 && (
         <Banner tone="amber" title={`มีการจับคู่ที่เคยยืนยันไว้ ${staleCount} รายการใช้ไม่ได้แล้ว`}>

@@ -142,6 +142,9 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
   const dataset = effective.dataset;
   const hasData = dataset.meta.sources.length > 0;
   const openWork = dataset.reconciliation.exceptions.length + effective.settlements.length;
+  // งวดที่ยังไม่ได้อัปโหลด statement ไม่มีข้อยกเว้นให้นับ เพราะยังไม่มีอะไรให้กระทบ
+  // ถ้าไม่แยกออกมา หน้าจอจะบอกว่า "เคลียร์ครบแล้ว" ตั้งแต่ยังไม่เริ่มทำงาน
+  const missingStatements = dataset.reconciliation.summary.missingStatements ?? 0;
 
   const value: WorkspaceValue = {
     raw,
@@ -226,7 +229,9 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
             <div className="topbar-status">
               {hasData && (openWork > 0
                 ? <span className="work-chip"><i className="dot amber" />เหลืองานค้าง {openWork.toLocaleString("en-US")} รายการ</span>
-                : <span className="work-chip"><i className="dot green" />เคลียร์ครบแล้ว</span>)}
+                : missingStatements > 0
+                  ? <span className="work-chip"><i className="dot amber" />ยังไม่ได้อัปโหลด Statement</span>
+                  : <span className="work-chip"><i className="dot green" />เคลียร์ครบแล้ว</span>)}
             </div>
             <button className="primary-button" onClick={() => go("upload")}>＋ นำเข้าเอกสาร</button>
           </header>

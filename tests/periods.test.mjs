@@ -449,3 +449,31 @@ test("ไฟล์ต้นฉบับถูกเก็บไว้ราย�
   assert.equal(replaced.find((row) => row.period === "2026-08").name, "987-2026-08 (แก้ไข).pdf");
   assert.equal(await loadDocumentFile(db, "DOC-2026-08"), null, "ไฟล์ของแถวที่ถูกแทนที่ต้องถูกลบตามไปด้วย");
 });
+
+test("งวดที่ยังไม่มี Statement ต้องไม่ถูกนับว่าเคลียร์ครบแล้ว", async () => {
+  // เคสจริงที่เจอ: อัปโหลดบัญชีแยกประเภทกับรายงานการรับเงินของเดือนใหม่เข้าไป
+  // statement ยังไม่มี รายการทั้งเดือนจึงไม่มีอะไรให้กระทบ ไม่มีข้อยกเว้นสักรายการ
+  // แล้วหน้าจอขึ้นว่า "เคลียร์ครบแล้ว" — เครื่องมือบัญชีบอกว่างานเสร็จตั้งแต่ยังไม่เริ่ม
+  const db = await freshDb();
+
+  await replaceBookings(db, [booking("R1", "2026-08-10", 100000)]);
+  await replaceReceipts(db, [receipt("RCP-AUG", "R1", "2026-08-10", 100000, "KbankGL987")]);
+  await replaceStatement(db, statement("987", "2026-07", [line("L-JUL", "2026-07-10", 100000)]));
+  await noteDocument(db, "collection", "2026-08");
+
+  const { dataset } = await runReconciliation(db);
+  const august = scopeToPeriod(applySettings(dataset, DEFAULT_SETTINGS, []), "2026-08");
+  const { summary, outOfScope, exceptions } = august.dataset.reconciliation;
+
+  assert.equal(exceptions.length, 0, "ไม่มีข้อยกเว้น เพราะยังไม่มีอะไรให้กระทบ");
+  assert.equal(summary.missingStatements, 1, "แต่ต้องบอกได้ว่ายังขาด Statement อยู่หนึ่งบัญชี");
+
+  const waiting = outOfScope.filter((item) => item.reason === "MISSING_STATEMENT");
+  assert.equal(waiting.length, 1);
+  assert.equal(waiting[0].count, 1, "และมีรายการรออยู่จริง ไม่ใช่ศูนย์");
+  assert.equal(waiting[0].amountSatang, 100000);
+
+  // เดือนที่มี statement ครบและจับคู่ได้หมด ต้องไม่ติดธงนี้
+  const july = scopeToPeriod(applySettings(dataset, DEFAULT_SETTINGS, []), "2026-07");
+  assert.equal(july.dataset.reconciliation.summary.missingStatements, 0);
+});
