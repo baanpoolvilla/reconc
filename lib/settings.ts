@@ -15,6 +15,8 @@ export type MatchOptions = {
   allowOneToMany: boolean;
   /** ค่าประกันวัน Check-in เป็นสตางค์ — กฎ R06 อ่านจำนวนจากที่นี่ ไม่มีค่าใดฝังในเครื่องมือจับคู่ */
   securityDepositSatang: number;
+  /** ปิดกฎ R06 โดยไม่ลบจำนวนที่ตั้งไว้ — ปิดแล้วเครื่องมือจับคู่ได้รับ 0 */
+  securityDepositEnabled: boolean;
 };
 
 export type SettlementSettings = {

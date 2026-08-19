@@ -461,6 +461,11 @@ td small.block { display: block; margin-top: 3px; color: var(--muted); font-size
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
+/* ช่องกรอกกับสวิตช์ที่คุมช่องนั้น อยู่ในคลัสเตอร์เดียวกันฝั่งขวาของแถวตั้งค่า */
+.field-controls { display: inline-flex; align-items: center; gap: 14px; }
+/* คำเตือนในคำอธิบายใต้หัวข้อ — ใช้ตอนกฎถูกปิด ไม่ใช่ตอนมีอะไรเสีย */
+.settings-field > span:first-child small em { font-style: normal; font-weight: 600; color: var(--amber); }
+
 /* ช่องกรอกเงินเป็นบาทในหน้าตั้งค่า — ตัวเลขชิดขวาเหมือนยอดเงินทุกที่ในระบบ */
 .baht-field { display: inline-flex; align-items: center; gap: 8px; }
 .baht-field input { width: 120px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 11px; background: white; font: 700 15px var(--sans); color: inherit; text-align: right; }

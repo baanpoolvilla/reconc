@@ -117,10 +117,23 @@ test("ค่าประกันที่ใช้ไม่ได้ถูก�
   const of = (value) => normalizeSettings({ matching: { securityDepositSatang: value } }).matching.securityDepositSatang;
 
   assert.equal(of(500000), 500000);
-  assert.equal(of(0), 100, "ไม่มีสวิตช์ปิด ขั้นต่ำจึงเป็นหนึ่งบาท");
+  assert.equal(of(0), 100, "การปิดกฎมีสวิตช์ของตัวเอง จำนวนเงินจึงต่ำสุดหนึ่งบาท");
   assert.equal(of(-1), 100);
   assert.equal(of("ห้าพัน"), 300000, "อ่านไม่ออกให้กลับไปใช้ค่าตั้งต้น");
   assert.equal(of(300000.7), 300001, "ปัดเป็นจำนวนเต็มสตางค์เสมอ");
+});
+
+test("สวิตช์ปิดกฎค่าประกัน เก็บจำนวนที่ตั้งไว้ไว้ครบ", () => {
+  const of = (raw) => normalizeSettings({ matching: raw }).matching;
+
+  assert.equal(of({}).securityDepositEnabled, true, "ของเก่าที่ไม่มีคีย์นี้ต้องนับว่าเปิด");
+  assert.equal(of({ securityDepositEnabled: false }).securityDepositEnabled, false);
+  assert.equal(
+    of({ securityDepositEnabled: false, securityDepositSatang: 500000 }).securityDepositSatang,
+    500000,
+    "ปิดกฎแล้วจำนวนที่ผู้ใช้ตั้งไว้ต้องไม่หาย",
+  );
+  assert.equal(of({ securityDepositEnabled: "ปิด" }).securityDepositEnabled, true, "ค่าที่ไม่ใช่ boolean ใช้ค่าตั้งต้น");
 });
 
 test("จำนวนค่าประกันไม่ถูกเขียนไว้ในเครื่องมือจับคู่", async () => {
@@ -313,4 +326,31 @@ test("การเปลี่ยนค่าประกันไม่แต�
   assert.equal(group.deltaSatang, 0);
 
   assert.equal(JSON.stringify(dataset), before, "การเปลี่ยนการตั้งค่าต้องไม่แก้ข้อมูลต้นฉบับ");
+});
+
+test("ปิดสวิตช์แล้วกฎ R06 ไม่ทำงาน แม้จำนวนค่าประกันยังตั้งไว้", () => {
+  // เงินเข้าเท่ากับค่าห้อง 10,000 บวกค่าประกัน 3,000 พอดีในวัน Check-in — เคสที่ R06 จับได้แน่
+  const dataset = {
+    meta: {
+      generatedAt: "", period: "2026-07", periods: ["2026-07"], rulesetVersion: "x",
+      sources: [{ kind: "collection_report", name: "c.xlsx", rows: 1 }],
+    },
+    bookings: [booking("R1", "2026-07-10")],
+    receipts: [receipt("RCP-1", "R1", "2026-07-10", 1000000, "2026-07-10")],
+    statements: [statement([credit("L1", "2026-07-10", 1300000)])],
+    reconciliation: {
+      rulesetVersion: "x", accounts: [], groups: [], exceptions: [],
+      outOfScope: [], staleDecisions: [], summary: {},
+    },
+  };
+
+  const on = applySettings(dataset, DEFAULT_SETTINGS, []);
+  assert.equal(on.dataset.reconciliation.groups.length, 1, "เปิดอยู่ต้องจับได้");
+
+  const off = applySettings(dataset, {
+    ...DEFAULT_SETTINGS,
+    matching: { ...DEFAULT_SETTINGS.matching, securityDepositEnabled: false },
+  }, []);
+  assert.equal(off.dataset.reconciliation.groups.length, 0, "ปิดแล้วต้องไม่จับคู่ให้");
+  assert.ok(off.dataset.reconciliation.exceptions.length > 0, "ของที่จับไม่ได้ต้องกลายเป็นรายการค้าง ไม่ใช่หายไป");
 });

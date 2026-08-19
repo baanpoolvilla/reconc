@@ -492,6 +492,9 @@ export function Settings() {
   const patchSettlement = (partial: Partial<AppSettings["settlement"]>) => patch({ settlement: { ...settings.settlement, ...partial } });
   const patchDisplay = (partial: Partial<AppSettings["display"]>) => patch({ display: { ...settings.display, ...partial } });
 
+  // ค่าที่บันทึกไว้ก่อนมีสวิตช์นี้ไม่มีคีย์ จึงนับว่าเปิด — เหมือนที่ normalizeSettings ทำ
+  const depositOn = settings.matching.securityDepositEnabled !== false;
+
   const toggleIn = (key: "properties" | "groups" | "methods" | "channels" | "bookingStatuses", value: string) => {
     const current = settings.exclusions[key];
     patchExclusions({ [key]: current.includes(value) ? current.filter((item) => item !== value) : [...current, value] });
@@ -659,14 +662,24 @@ export function Settings() {
                 <small>
                   จำนวนเงินที่ลูกค้าโอนเพิ่มจากค่าห้องในวัน Check-in ·
                   ระบบจับคู่ให้เมื่อเงินเข้าเท่ากับค่าห้องบวกจำนวนนี้พอดี และวันที่รับเงินกับวันที่เงินเข้าตรงกับวัน Check-in
+                  {!depositOn && <em> · ปิดอยู่ — เงินเข้าที่มากกว่าค่าห้องพอดีหนึ่งค่าประกันจะกลายเป็นรายการค้าง</em>}
                 </small>
               </span>
-              <BahtField
-                label="ค่าประกันวัน Check-in"
-                satang={settings.matching.securityDepositSatang}
-                disabled={busy}
-                onCommit={(next) => patchMatching({ securityDepositSatang: next })}
-              />
+              {/* ช่องจำนวนเงินยังอ่านได้ตอนกฎถูกปิด เพื่อให้เห็นว่าเปิดกลับมาแล้วจะได้เท่าไหร่ */}
+              <span className="field-controls">
+                <BahtField
+                  label="ค่าประกันวัน Check-in"
+                  satang={settings.matching.securityDepositSatang}
+                  disabled={busy || !depositOn}
+                  onCommit={(next) => patchMatching({ securityDepositSatang: next })}
+                />
+                <Switch
+                  checked={depositOn}
+                  onChange={(next) => patchMatching({ securityDepositEnabled: next })}
+                  label="เปิดใช้กฎค่าประกันวัน Check-in"
+                  disabled={busy}
+                />
+              </span>
             </div>
             <div className="settings-field">
               <span><b>จำนวนแถวสูงสุดในหน้าค้นหา</b><small>ตารางยาวเกินไปทำให้หน้าจอหน่วง · ไฟล์ CSV ที่ส่งออกได้ครบทุกแถวเสมอ</small></span>
@@ -845,7 +858,7 @@ function FacetPanel({ title, hint, facets, selected, onToggle, onClear, disabled
  * ห้ารอบที่ค่าประกันเป็น 5, 50, 500, 5000 ตามลำดับ
  *
  * รับเฉพาะจำนวนเต็มตั้งแต่ 1 บาทขึ้นไป ค่าที่ใช้ไม่ได้จะเด้งกลับเป็นค่าที่บันทึกไว้
- * แทนที่จะบันทึกของเสีย
+ * แทนที่จะบันทึกของเสีย — การปิดกฎเป็นหน้าที่ของสวิตช์ข้าง ๆ ไม่ใช่การพิมพ์ศูนย์
  */
 function BahtField({ label, satang, disabled, onCommit }: {
   label: string;
