@@ -1,6 +1,7 @@
 import type { Booking, Dataset, Receipt } from "./dataset";
 import * as core from "./settings-core.mjs";
 import * as engine from "./reconciliation.mjs";
+import * as audit from "./audit.mjs";
 
 // หน้ากากที่ใส่ type ให้ตรรกะใน settings-core.mjs / settlements.mjs
 // เหมือนที่ dataset.ts ทำกับ reconciliation.mjs
@@ -19,6 +20,9 @@ export type MatchRule = {
 };
 
 export const RULES: MatchRule[] = engine.RULES as MatchRule[];
+
+/** ชนิดเหตุการณ์ในสมุดตรวจ — หน้าจออ่านป้ายจากที่เดียวกับที่ repository เขียน */
+export const AUDIT_ACTIONS = audit.AUDIT_ACTIONS as Record<string, { label: string; tone: string }>;
 
 export type MatchOptions = {
   maxGroupSize: number;

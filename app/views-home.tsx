@@ -323,12 +323,63 @@ export function Report() {
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * รายการที่ยังไม่จบ — กระดาษทำการที่แนบท้ายงบพิสูจน์ยอด
+   *
+   * รายงานส่งออกได้แต่ของที่เคลียร์แล้ว ซึ่งเป็นครึ่งเดียวของสิ่งที่ผู้ตรวจสอบ
+   * ถามหา อีกครึ่งคือ "แล้วที่เหลือคืออะไร ทำไมถึงยังไม่จบ" ซึ่งเดิมอ่านได้แต่
+   * บนหน้าจอ ต่อจากนี้เอาออกไปเป็นไฟล์ได้เหมือนกัน
+   */
+  const exportOpen = () => {
+    const header = [
+      "หมวด", "เหตุผล", "บัญชี", "วันที่รับเงิน", "เลขที่จอง", "ผู้จอง", "ช่องทางรับเงิน",
+      "ยอดที่รับมา", "วันที่เงินเข้า", "ยอดเงินเข้า", "รายละเอียดเงินเข้า", "ผลต่าง",
+    ];
+    const escape = (value: string | number) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const money = (satang: number) => (satang / 100).toFixed(2);
+
+    const rows = [
+      ...dataset.reconciliation.exceptions.map((item) => [
+        item.receiptId ? "รับเงินแล้วแต่หาเงินเข้าไม่เจอ" : "เงินเข้าแต่ไม่รู้ว่าของใคร",
+        item.label, item.account,
+        item.receiptDate, item.reservationNo, item.guest, item.receiptMethod,
+        item.receiptSatang ? money(item.receiptSatang) : "",
+        item.bankDate, item.bankSatang ? money(item.bankSatang) : "",
+        item.bankDetail, money(item.deltaSatang),
+      ]),
+      ...outOfScope.map((item) => [
+        "ยังไม่เข้าสู่การกระทบยอด",
+        item.reason === "MISSING_STATEMENT" ? "ยังไม่มี Statement ของงวดนี้" : "ช่องทางนี้ไม่มีบัญชีธนาคาร",
+        "", "", `${item.count} รายการ`, "", item.method,
+        money(item.amountSatang), "", "", item.period, "",
+      ]),
+    ].map((row) => row.map(escape).join(","));
+
+    const blob = new Blob([`﻿${[header.map(escape).join(","), ...rows].join("\r\n")}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clearclose-ค้าง-${dataset.meta.period || "export"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openCount = dataset.reconciliation.exceptions.length
+    + outOfScope.reduce((sum, item) => sum + item.count, 0);
+
   return (
     <>
       <PageHeading
         title="รายงาน"
         description="สรุปผลของรอบนี้ ส่งออกเป็นไฟล์ Excel ได้"
-        action={<button className="primary-button" onClick={exportCsv}>⇩ ส่งออกไฟล์ CSV</button>}
+        action={
+          <span className="heading-actions">
+            <button className="secondary-button" onClick={exportOpen} disabled={!openCount}>
+              ⇩ รายการค้าง {openCount ? `(${openCount})` : ""}
+            </button>
+            <button className="primary-button" onClick={exportCsv}>⇩ ที่กระทบยอดแล้ว</button>
+          </span>
+        }
       />
 
       <section className="stat-row">

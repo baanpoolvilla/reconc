@@ -7,6 +7,7 @@ import { FixQueue, Settlements } from "./views-match";
 import { Browse, Settings, Upload } from "./views-data";
 import { Receipts } from "./views-receipts";
 import { Help } from "./views-help";
+import { Audit } from "./views-audit";
 import { type Dataset, thaiMonthLabel } from "../lib/dataset";
 import {
   type AppSettings,
@@ -45,6 +46,7 @@ const NAV: { id: ViewId; label: string; icon: string; group: string; step?: numb
 
   { id: "report", label: "รายงาน", icon: "▤", group: "ตรวจสอบ" },
   { id: "browse", label: "ค้นหารายการ", icon: "⌕", group: "ตรวจสอบ" },
+  { id: "audit", label: "สมุดตรวจ", icon: "▦", group: "ตรวจสอบ" },
 
   { id: "settings", label: "ตั้งค่า", icon: "⚙", group: "ระบบ" },
   { id: "help", label: "คู่มือการใช้งาน", icon: "?", group: "ระบบ" },
@@ -267,6 +269,7 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
             {active === "upload" && <Upload />}
             {active === "settings" && <Settings />}
             {active === "help" && <Help />}
+            {active === "audit" && <Audit />}
 
             <footer>
               <span>ClearClose · กฎเวอร์ชัน {dataset.reconciliation.rulesetVersion}</span>

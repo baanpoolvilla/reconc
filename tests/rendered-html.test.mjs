@@ -416,3 +416,36 @@ test("the sidebar groups menus by the question a person is asking", async () => 
   assert.match(workspace, /step: 2/);
   assert.match(workspace, /step: 5/);
 });
+
+test("the audit log is readable in the app, and read-only", async () => {
+  const view = await read("../app/views-audit.tsx");
+  const route = await read("../app/api/audit/route.ts");
+  const workspace = await read("../app/workspace.tsx");
+
+  // สมุดที่อ่านได้เฉพาะจาก SQL คือสมุดที่แผนกบัญชีตรวจไม่ได้ ซึ่งเท่ากับไม่มี
+  assert.match(workspace, /views-audit/);
+  assert.match(workspace, /สมุดตรวจ/);
+
+  // อ่านอย่างเดียว — ไม่มี POST/DELETE ให้แก้สมุดผ่านหน้าจอ
+  assert.match(route, /export async function GET/);
+  assert.doesNotMatch(route, /export async function (POST|DELETE|PUT|PATCH)/);
+  assert.match(view, /อ่านอย่างเดียว/);
+
+  // กรองตามชนิด ค้นหา และเอาออกไปเป็นไฟล์ได้
+  assert.match(view, /setAction/);
+  assert.match(view, /SearchBox/);
+  assert.match(view, /exportCsv/);
+});
+
+test("the report exports what is still open, not only what closed", async () => {
+  const home = await read("../app/views-home.tsx");
+
+  // รายการค้างคือกระดาษทำการที่แนบท้ายงบพิสูจน์ยอด เดิมอ่านได้แต่บนหน้าจอ
+  assert.match(home, /exportOpen/);
+  assert.match(home, /รายการค้าง/);
+  assert.match(home, /ยังไม่เข้าสู่การกระทบยอด/);
+  // ทั้งสองฝั่งของคิวงาน บวกของที่ไม่เคยเข้าสู่การกระทบยอด
+  assert.match(home, /หาเงินเข้าไม่เจอ/);
+  assert.match(home, /ไม่รู้ว่าของใคร/);
+  assert.match(home, /outOfScope\.map/);
+});

@@ -3,8 +3,11 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
 import { migrate } from "../lib/db/client.mjs";
+import { AUDIT_ACTIONS } from "../lib/audit.mjs";
 import {
+  auditCounts,
   deleteDocument,
+  listAuditEvents,
   findIssuedReceipt,
   issueReceipt,
   listDecisions,
@@ -476,4 +479,65 @@ test("ลบเอกสารไม่แตะใบเสร็จที่�
 test("ลบเอกสารที่ไม่มีอยู่ คืน null แทนที่จะพัง", async () => {
   const db = await freshDb();
   assert.equal(await deleteDocument(db, "ไม่มีจริง"), null);
+});
+
+// ── สมุดตรวจ ─────────────────────────────────────────────────────────────────
+//
+// ระบบบันทึกทุกการกระทำที่เปลี่ยนผลลัพธ์ไว้ตั้งแต่แรก แต่ก่อนหน้านี้อ่านได้เฉพาะ
+// จาก SQL ซึ่งเท่ากับแผนกบัญชีตรวจไม่ได้
+
+test("ทุกการกระทำที่เปลี่ยนผลลัพธ์ ถูกบันทึกไว้อ่านย้อนหลังได้", async () => {
+  const { db, decision } = await withSettledBatch();
+  const { group } = await settledGroup(db, [decision]);
+  const issued = await issueReceipt(db, {
+    document: documentFor(group), series: receiptSeries(group.date), decisionId: decision.id,
+  });
+  await voidReceipt(db, issued.number, "ออกผิดก้อน");
+  await deleteDocument(db, "DOC-collection");
+
+  const events = await listAuditEvents(db, { limit: 100 });
+  const actions = events.map((item) => item.action);
+
+  for (const expected of ["DECISION_SAVED", "RECEIPT_ISSUED", "RECEIPT_VOIDED", "DOCUMENT_DELETED"]) {
+    assert.ok(actions.includes(expected), `สมุดตรวจขาด ${expected}`);
+  }
+  // ล่าสุดอยู่บนสุด คือลำดับที่คนเปิดดูต้องการ
+  assert.equal(actions[0], "DOCUMENT_DELETED");
+  for (const event of events) {
+    assert.ok(event.createdAt, "ทุกเหตุการณ์ต้องมีเวลา");
+    assert.ok(event.actor, "และต้องรู้ว่าใครทำ");
+    assert.equal(typeof event.detail, "object", "รายละเอียดต้องอ่านกลับมาเป็นข้อมูล ไม่ใช่ข้อความดิบ");
+  }
+});
+
+test("เหตุผลที่ยกเลิกใบเสร็จ อ่านกลับได้จากสมุดตรวจ", async () => {
+  const { db, decision } = await withSettledBatch();
+  const { group } = await settledGroup(db, [decision]);
+  const issued = await issueReceipt(db, {
+    document: documentFor(group), series: receiptSeries(group.date), decisionId: decision.id,
+  });
+  await voidReceipt(db, issued.number, "ชื่อผู้จ่ายผิด");
+
+  const [voided] = await listAuditEvents(db, { action: "RECEIPT_VOIDED" });
+  assert.equal(voided.entityId, issued.number);
+  assert.equal(voided.detail.reason, "ชื่อผู้จ่ายผิด");
+});
+
+test("นับเหตุการณ์แยกตามชนิดได้ ใช้ทำตัวกรองที่บอกจำนวน", async () => {
+  const { db, decision } = await withSettledBatch();
+  const { group } = await settledGroup(db, [decision]);
+  await issueReceipt(db, { document: documentFor(group), series: receiptSeries(group.date), decisionId: decision.id });
+
+  const counts = await auditCounts(db);
+  const issued = counts.find((item) => item.action === "RECEIPT_ISSUED");
+  assert.equal(issued.total, 1);
+  assert.ok(counts.every((item) => Number.isInteger(item.total)));
+});
+
+test("ป้ายชนิดเหตุการณ์ครอบคลุมทุก action ที่ระบบเขียนจริง", () => {
+  // ป้ายที่ขาดไปทำให้หน้าจอโชว์ชื่อ action ดิบ ซึ่งไม่มีใครอ่านออก
+  for (const action of ["DOCUMENT_UPLOADED", "DOCUMENT_DELETED", "DECISION_SAVED", "DECISION_REMOVED",
+    "RECEIPT_ISSUED", "RECEIPT_VOIDED", "SETTINGS_SAVED", "SNAPSHOT_REBUILT"]) {
+    assert.ok(AUDIT_ACTIONS[action]?.label, `ขาดป้ายของ ${action}`);
+  }
 });
