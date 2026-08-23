@@ -9,6 +9,17 @@ export const SETTINGS_STORAGE_KEY = "clearclose.settings.v1";
 export const DECISIONS_STORAGE_KEY = "clearclose.decisions.v1";
 export const SETTINGS_VERSION: number = core.SETTINGS_VERSION;
 
+/** รูปแบบการจับคู่ที่เครื่องมือมองหา — คู่มือในแอปอ่านจากที่เดียวกับที่ engine ใช้จริง */
+export type MatchRule = {
+  id: string;
+  label: string;
+  detail: string;
+  score?: number;
+  blocking?: boolean;
+};
+
+export const RULES: MatchRule[] = engine.RULES as MatchRule[];
+
 export type MatchOptions = {
   maxGroupSize: number;
   allowManyToOne: boolean;

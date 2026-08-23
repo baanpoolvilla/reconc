@@ -133,6 +133,67 @@ code { padding: 2px 6px; border-radius: 6px; background: rgba(20,69,58,.08); fon
 .progress-block small { color: var(--muted); font-size: 12px; }
 .progress-outside { color: var(--red); font-weight: 700; }
 
+/* ── ลำดับขั้นการปิดรอบ ───────────────────────────────────────────────────── */
+
+.steps { margin-bottom: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+.steps > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 18px 22px 12px; }
+.steps > header b { font: 620 18px/1.3 var(--serif); }
+.steps > header span { color: var(--muted); font-size: 12px; }
+.steps ol { margin: 0; padding: 0 10px 10px; list-style: none; }
+
+.step { display: flex; align-items: center; gap: 14px; padding: 14px 12px; border-radius: 12px; border-top: 1px solid var(--line-soft); }
+.step:first-child { border-top: 0; }
+.step-mark { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--slate-soft); color: var(--muted); font: 700 13px var(--sans); }
+.step-body { flex: 1; min-width: 0; }
+.step-body b { display: block; font-size: 15px; }
+.step-body small { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.step-side { text-align: right; white-space: nowrap; }
+.step-side em { display: block; font-style: normal; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.step-state { display: block; margin-top: 3px; color: var(--faint); font-size: 11px; }
+.step > button { flex: 0 0 auto; }
+
+.step-done .step-mark { background: var(--green-soft); color: #1f6244; }
+.step-done .step-body b { color: var(--muted); font-weight: 600; }
+.step-now { background: #f4f8f6; box-shadow: inset 0 0 0 1px #cfe3d8; }
+.step-now .step-mark { background: var(--forest); color: white; }
+.step-now .step-state { color: var(--forest-2); font-weight: 700; }
+.step-blocked { background: var(--red-soft); box-shadow: inset 0 0 0 1px #f0cfcf; }
+.step-blocked .step-mark { background: var(--red); color: white; }
+.step-blocked .step-state { color: var(--red); font-weight: 700; }
+.step-later { opacity: .62; }
+.step-optional .step-mark { background: var(--blue-soft); color: var(--blue); }
+
+/* ── หัวข้อกลุ่มในเมนู ─────────────────────────────────────────────────────── */
+.side-group { display: block; padding: 14px 12px 5px; color: #8fb0a3; font-size: 10px; font-weight: 800; font-style: normal; letter-spacing: 1px; text-transform: uppercase; }
+.side nav > span { display: block; }
+
+/* ── คู่มือการใช้งาน ──────────────────────────────────────────────────────── */
+.guide { padding: 0 22px 20px; font-size: 13.5px; line-height: 1.75; color: var(--ink); }
+.guide p { margin: 0 0 10px; }
+.guide-steps { margin: 0; padding-left: 0; list-style: none; counter-reset: guide; }
+.guide-steps > li { position: relative; margin-bottom: 18px; padding-left: 38px; counter-increment: guide; }
+.guide-steps > li::before { content: counter(guide); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--forest); color: white; font: 700 12px var(--sans); }
+.guide-steps > li > b { display: block; margin-bottom: 5px; font-size: 14.5px; }
+.guide-note { padding: 10px 13px; border-left: 3px solid var(--blue); border-radius: 0 8px 8px 0; background: var(--blue-soft); font-size: 12.5px; }
+.guide-warn { padding: 10px 13px; border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; background: var(--amber-soft); font-size: 12.5px; }
+.guide-table { width: 100%; min-width: 0; margin: 4px 0 12px; border-collapse: collapse; }
+.guide-table th { position: static; padding: 8px 10px; background: var(--slate-soft); box-shadow: none; text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+.guide-table td { padding: 10px; border-top: 1px solid var(--line-soft); font-size: 13px; vertical-align: top; }
+.guide-table tbody tr:hover { background: transparent; }
+.guide-table td:first-child { width: 30%; }
+.guide-list { margin: 0; padding-left: 20px; }
+.guide-list li { margin-bottom: 6px; }
+.guide-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.guide-rules > div { padding: 14px 16px; border: 1px solid #cfe3d8; border-radius: 12px; background: #f4f8f6; }
+.guide-rules b { display: block; margin: 8px 0 4px; font: 650 15px var(--serif); }
+.guide-rules p { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+@media (max-width: 720px) {
+  .step { flex-wrap: wrap; }
+  .step-side { text-align: left; }
+  .step > button { width: 100%; }
+}
+
 /* ── งวดการจ่ายของคำจองใบเดียวกัน ─────────────────────────────────────────── */
 .instalments { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: #fbfcfe; }
 .instalments > b { display: block; margin-bottom: 8px; font-size: 12.5px; }

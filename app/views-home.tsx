@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Banner, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, TaskCard, useWorkspace } from "./ui";
+import { Banner, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, Step, StepList, type StepState, useWorkspace } from "./ui";
 import { baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
 import { ALL_PERIODS, DECISION_REASONS, type DecisionReason } from "../lib/settings";
 
@@ -18,7 +18,6 @@ export function Home() {
   // ต่างจากเงินที่ OTA เก็บแทนเรา ซึ่งไม่มีบัญชีให้กระทบตั้งแต่ต้น
   const waitingForStatement = outOfScope.filter((item) => item.reason === "MISSING_STATEMENT");
   const waitingCount = waitingForStatement.reduce((sum, item) => sum + item.count, 0);
-  const waitingSatang = waitingForStatement.reduce((sum, item) => sum + item.amountSatang, 0);
 
   const receiptSide = exceptions.filter((item) => item.receiptId).length;
   const bankSide = exceptions.filter((item) => item.reason === "UNMATCHED_BANK_CREDIT").length;
@@ -37,19 +36,76 @@ export function Home() {
   // แถบความคืบหน้าจึงเหลือไม่กี่ใบ แล้วหน้าจอก็ประกาศว่าเคลียร์ครบ 100%
   // ทั้งที่ยังไม่ได้เริ่มทำงาน
   const unmapped = effective.unmappedAccounts;
+
+  // เอกสารที่รอบนี้มีแล้วและที่ยังขาด — ขั้นที่ 2 ตอบคำถามนี้คำถามเดียว
+  const DOC_NEEDS = [
+    { kind: "ledger", label: "บัญชีแยกประเภท" },
+    { kind: "collection_report", label: "รายงานการรับเงิน" },
+    { kind: "bank_statement", label: "Statement ธนาคาร" },
+  ];
+  const inPeriodSources = dataset.meta.sources.filter((item) => !item.period || period === ALL_PERIODS || item.period === period);
+  const missingDocs = DOC_NEEDS
+    .filter((need) => !inPeriodSources.some((item) => item.kind.startsWith(need.kind)))
+    .map((need) => need.label);
+  const loadedDocs = inPeriodSources.length;
+  const settledOta = dataset.reconciliation.groups.filter((group) => group.type === "OTA" && group.decision).length;
+  const openWork = receiptSide + bankSide;
+
+  // สถานะของแต่ละขั้น — "ทำต่อตรงนี้" มีได้ขั้นเดียวเสมอ คือขั้นแรกที่ยังไม่เสร็จ
+  const steps = (() => {
+    const accounts: StepState = unmapped.length ? "blocked" : "done";
+    const documents: StepState = missingDocs.length ? (accounts === "done" ? "now" : "later") : "done";
+    const ready = accounts === "done" && documents === "done";
+    const fix: StepState = !openWork ? "done" : ready ? "now" : "later";
+    const settlementsState: StepState = !settlements ? "done" : ready ? (fix === "now" ? "later" : "now") : "later";
+    const receipts: StepState = settledOta ? "now" : "optional";
+    const report: StepState = fix === "done" && settlementsState === "done" ? "now" : "later";
+    return { accounts, documents, fix, settlements: settlementsState, receipts, report };
+  })();
   // รายการที่ไม่มีบัญชีธนาคารให้กระทบเลย — รวมทั้งเงินที่ OTA เก็บแทนเรา ซึ่งเป็น
   // เรื่องปกติ และช่องทางที่ยังไม่ได้ผูก ซึ่งไม่ปกติ
   const noAccount = outOfScope.filter((item) => item.reason === "NO_BANK_ACCOUNT");
   const outsideCount = noAccount.reduce((sum, item) => sum + item.count, 0) + waitingCount;
 
+  // หน้าจอแรกที่คนใหม่เห็น — บอกลำดับเดียวกับตอนมีข้อมูลแล้ว ไม่ใช่กล่องว่างที่
+  // บอกแค่ว่า "ยังไม่มีอะไร" ซึ่งไม่ได้ช่วยให้ใครรู้ว่าต้องเริ่มตรงไหน
   if (!hasData) {
     return (
       <>
-        <PageHeading title="ยินดีต้อนรับ" description="ระบบพร้อมใช้งานแล้ว เหลือแค่ใส่เอกสารเข้าไป" />
+        <PageHeading
+          title="เริ่มใช้งาน"
+          description="ทำสามขั้นนี้ครั้งเดียว จากนั้นทุกเดือนเหลือแค่ใส่เอกสารแล้วเคลียร์งานค้าง"
+        />
+        <StepList title="เริ่มต้นใช้งาน" note="อ่านคู่มือก่อนได้ ใช้เวลาไม่ถึงห้านาที">
+          <Step
+            index={1}
+            state="now"
+            title="อ่านคู่มือการใช้งาน"
+            why="อธิบายว่าระบบจับคู่ยังไง ต้องเตรียมไฟล์อะไร และแก้ยังไงเมื่อทำผิด"
+            action="เปิดคู่มือ"
+            onAction={() => go("help")}
+          />
+          <Step
+            index={2}
+            state="later"
+            title="ผูกบัญชีธนาคารกับช่องทางรับเงิน"
+            why="ทำได้หลังอัปโหลด Statement ครั้งแรก — ระบบจะขึ้นเตือนให้เอง"
+            action="ไปตั้งค่า"
+            onAction={() => go("settings")}
+          />
+          <Step
+            index={3}
+            state="later"
+            title="นำเข้าเอกสารของเดือนแรก"
+            why="สี่ไฟล์: บัญชีแยกประเภท รายงานการรับเงิน และ Statement ธนาคารสองบัญชี"
+            action="นำเข้าเอกสาร"
+            onAction={() => go("upload")}
+          />
+        </StepList>
         <EmptyState
           icon="↑"
           title="ยังไม่มีเอกสารในระบบ"
-          detail="ต้องใช้สี่ไฟล์: บัญชีแยกประเภท รายงานการรับเงิน และ Statement ธนาคารสองบัญชี"
+          detail="ลากไฟล์ทั้งสี่เข้าไปพร้อมกันได้ ระบบดูจากชื่อไฟล์เองว่าเป็นเอกสารชนิดไหน"
           action={<button className="primary-button" onClick={() => go("upload")}>ไปหน้านำเข้าเอกสาร</button>}
         />
       </>
@@ -68,87 +124,84 @@ export function Home() {
 
       <Progress done={done} total={total} label="รายการที่กระทบยอดแล้ว" outside={outsideCount} />
 
-      {/* ผูกบัญชีไม่ครบ = รายการของช่องทางนั้นไม่เคยถูกนำมาเทียบเลย ต้องขึ้นก่อน
-          ทุกอย่าง เพราะตัวเลขที่เหลือบนหน้านี้นับจากของที่เข้ามาแล้วเท่านั้น */}
-      {unmapped.length > 0 && (
-        <Banner
-          tone="red"
-          title={`บัญชี ${unmapped.map((item) => item.code).join(" และ ")} ยังไม่ได้ผูกกับช่องทางรับเงิน`}
-          action={<button className="small-primary" onClick={() => go("settings")}>ไปผูกบัญชี</button>}
-        >
-          Statement ของบัญชีนี้อยู่ในระบบแล้ว แต่ระบบยังไม่รู้ว่าตรงกับช่องทางรับเงินไหนในรายงานการรับเงิน
-          จนกว่าจะผูก รายการที่รับเงินผ่านช่องทางนั้นจะ<b>ไม่ถูกนำมากระทบยอดเลย</b> และตัวเลขทั้งหน้านี้จะนับเฉพาะส่วนที่เหลือ
-        </Banner>
-      )}
-
-      {/* ยังไม่มี statement = ยังไม่มีอะไรให้กระทบ ไม่ใช่กระทบเสร็จแล้ว
-          ความต่างนี้สำคัญพอที่จะขึ้นก่อนกล่องงานทุกใบ */}
-      {waitingForStatement.length > 0 && (
-        <Banner
-          tone="amber"
-          title={`ยังไม่ได้อัปโหลด Statement ของงวดนี้ · ${waitingCount.toLocaleString("en-US")} รายการรอกระทบยอด (${baht(waitingSatang)})`}
-          action={<button className="primary-button" onClick={() => go("upload")}>นำเข้า Statement</button>}
-        >
-          รับเงินผ่าน {waitingForStatement.map((item) => item.method).join(" · ")} แต่ยังไม่มีรายการเดินบัญชีของงวดนี้ให้เทียบ
-          จนกว่าจะอัปโหลด ตัวเลขบนหน้านี้ยังไม่ใช่ผลการกระทบยอดที่สมบูรณ์
-        </Banner>
-      )}
-
       {staleCount > 0 && (
-        <Banner tone="amber" title={`มีการจับคู่ที่เคยยืนยันไว้ ${staleCount} รายการใช้ไม่ได้แล้ว`}>
-          เอกสารที่อัปโหลดใหม่ไม่มีแถวที่การจับคู่นั้นอ้างถึง ระบบจึงไม่นำมาคิด — ดูและลบทิ้งได้ที่ด้านล่างของหน้านี้
+        <Banner
+          tone="amber"
+          title={`มีการจับคู่ที่เคยยืนยันไว้ ${staleCount} รายการใช้ไม่ได้แล้ว`}
+          action={<button className="ghost-button" onClick={() => go("report")}>ดูรายละเอียด</button>}
+        >
+          เอกสารที่อัปโหลดใหม่ไม่มีแถวที่การจับคู่นั้นอ้างถึง ระบบจึงไม่นำมาคิด — อัปโหลดไฟล์เดิมกลับมาแล้วมันใช้ได้เอง หรือลบทิ้งที่ด้านล่างของหน้านี้
         </Banner>
       )}
 
-      <section className="task-grid">
-        <TaskCard
-          tone="red"
-          icon="≠"
-          title="รับเงินแล้ว แต่หาเงินเข้าไม่เจอ"
-          detail="เปิดดูทีละรายการ ระบบเสนอก้อนที่น่าจะใช่ให้"
-          count={receiptSide}
-          unit="รายการ"
-          amount={baht(summary.unexplainedReceiptSatang)}
-          action="เริ่มเคลียร์"
-          onClick={() => go("fix")}
-          disabled={receiptSide === 0}
+      <StepList
+        title={`ลำดับการปิดรอบ${period === ALL_PERIODS ? "" : thaiMonthLabel(period)}`}
+        note="ทำจากบนลงล่าง · ขั้นที่ยังไม่ถึงคิวข้ามไปก่อนได้"
+      >
+        <Step
+          index={1}
+          state={steps.accounts}
+          title="ผูกบัญชีธนาคารกับช่องทางรับเงิน"
+          why={unmapped.length
+            ? `บัญชี ${unmapped.map((item) => item.code).join(" และ ")} ยังไม่ได้ผูก — รายการของช่องทางนั้นจะไม่ถูกนำมากระทบยอดเลย`
+            : "ทำครั้งเดียวจบ ระบบจำไว้ให้ทุกงวดถัดไป"}
+          figure={unmapped.length ? `${unmapped.length} บัญชี` : undefined}
+          action={unmapped.length ? "ไปผูกบัญชี" : "ดูการตั้งค่า"}
+          onAction={() => go("settings")}
         />
-        <TaskCard
-          tone="amber"
-          icon="⊞"
-          title="ก้อนโอนจาก OTA รอแตกยอด"
-          detail={exactSettlements ? `${exactSettlements} ก้อนยอดตรงพอดี เหลือ ${settlements - exactSettlements} ก้อนที่ต้องดูก่อน` : "Airbnb Trip.com Booking.com โอนรวมหลายคำจองมาเป็นก้อน"}
-          count={settlements}
-          unit="ก้อน"
-          amount={baht(settlementSatang)}
+        <Step
+          index={2}
+          state={steps.documents}
+          title="นำเข้าเอกสารของรอบนี้"
+          why={missingDocs.length
+            ? `ยังขาด ${missingDocs.join(" · ")} — ตัวเลขที่เห็นยังไม่ใช่ผลที่สมบูรณ์`
+            : "บัญชีแยกประเภท รายงานการรับเงิน และ Statement ธนาคารครบแล้ว"}
+          figure={missingDocs.length ? `ขาด ${missingDocs.length} ฉบับ` : `${loadedDocs} ฉบับ`}
+          action="นำเข้าเอกสาร"
+          onAction={() => go("upload")}
+        />
+        <Step
+          index={3}
+          state={steps.fix}
+          title="เคลียร์ยอดที่ยังไม่ตรง"
+          why={openWork
+            ? `รับเงินแล้วหาเงินเข้าไม่เจอ ${receiptSide} รายการ · เงินเข้าไม่รู้ว่าของใคร ${bankSide} รายการ`
+            : "ไม่มียอดค้างทั้งสองฝั่ง"}
+          figure={openWork ? `${openWork} รายการ` : undefined}
+          action="เปิดคิวงาน"
+          onAction={() => go("fix")}
+        />
+        <Step
+          index={4}
+          state={steps.settlements}
+          title="แตกยอดก้อนโอนจาก OTA"
+          why={settlements
+            ? `${exactSettlements} ก้อนยอดตรงพอดี กดยืนยันได้เลย · อีก ${settlements - exactSettlements} ก้อนต้องดูก่อน`
+            : "ไม่มีก้อนโอนค้างอยู่"}
+          figure={settlements ? `${settlements} ก้อน · ${baht(settlementSatang)}` : undefined}
           action="แตกยอด"
-          onClick={() => go("ota")}
-          disabled={settlements === 0}
+          onAction={() => go("ota")}
         />
-        <TaskCard
-          tone="blue"
-          icon="?"
-          title="เงินเข้าแต่ไม่รู้ว่าของใคร"
-          detail="เงินเข้าบัญชีที่ยังไม่มีรายการรับเงินรองรับ"
-          count={bankSide}
-          unit="รายการ"
-          amount={baht(summary.unexplainedBankSatang)}
-          action="ตรวจสอบ"
-          onClick={() => go("fix")}
-          disabled={bankSide === 0}
+        <Step
+          index={5}
+          state={steps.receipts}
+          title="ออกใบเสร็จรับเงินให้ OTA"
+          why={settledOta
+            ? `ก้อนที่กระทบยอดแล้ว ${settledOta} ก้อน ออกใบเสร็จได้`
+            : "ยังไม่มีก้อนโอนที่กระทบยอดแล้ว"}
+          figure={settledOta ? `${settledOta} ก้อน` : undefined}
+          action="ไปออกใบเสร็จ"
+          onAction={() => go("receipts")}
         />
-        <TaskCard
-          tone="green"
-          icon="✓"
-          title="กระทบยอดเรียบร้อยแล้ว"
-          detail={`ระบบจับให้เอง ${summary.matchedGroups - (summary.decidedGroups ?? 0)} กลุ่ม · คนยืนยันเอง ${summary.decidedGroups ?? 0} กลุ่ม`}
-          count={done}
-          unit="รายการ"
-          amount={baht(summary.matchedSatang)}
+        <Step
+          index={6}
+          state={steps.report}
+          title="ตรวจรายงานแล้วปิดรอบ"
+          why="เช็คยอดคุมของทุกบัญชี แล้วส่งออกไฟล์เก็บไว้"
           action="ดูรายงาน"
-          onClick={() => go("report")}
+          onAction={() => go("report")}
         />
-      </section>
+      </StepList>
 
       <ConfirmedList />
 

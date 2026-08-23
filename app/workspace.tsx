@@ -6,6 +6,7 @@ import { Home, Report } from "./views-home";
 import { FixQueue, Settlements } from "./views-match";
 import { Browse, Settings, Upload } from "./views-data";
 import { Receipts } from "./views-receipts";
+import { Help } from "./views-help";
 import { type Dataset, thaiMonthLabel } from "../lib/dataset";
 import {
   type AppSettings,
@@ -31,15 +32,22 @@ import {
 // ใส่เอกสารรอบใหม่ ทุกหน้าจออ่านชุดข้อมูลเดียวกันที่คำนวณใหม่ทุกครั้งที่มีการ
 // เปลี่ยนแปลง จึงไม่มีทางเห็นตัวเลขคนละชุดกันระหว่างหน้า
 
-const NAV: { id: ViewId; label: string; icon: string }[] = [
-  { id: "home", label: "หน้าแรก", icon: "⌂" },
-  { id: "fix", label: "ยอดที่ไม่ตรง", icon: "≠" },
-  { id: "ota", label: "ก้อนโอน OTA", icon: "⊞" },
-  { id: "receipts", label: "ใบเสร็จรับเงิน", icon: "▧" },
-  { id: "browse", label: "ค้นหารายการ", icon: "⌕" },
-  { id: "report", label: "รายงาน", icon: "▤" },
-  { id: "upload", label: "นำเข้าเอกสาร", icon: "↑" },
-  { id: "settings", label: "ตั้งค่า", icon: "⚙" },
+// เมนูถูกแบ่งเป็นสามกลุ่มตามคำถามที่คนถามตอนมองหามัน: "ต้องทำอะไร" · "อยากดูอะไร"
+// · "อยากตั้งอะไร" ของเดิมวางแปดอันเรียงกันเป็นแถวเดียว ซึ่งไม่ได้บอกอะไรเลยว่า
+// อันไหนคืองานที่ต้องทำวันนี้ และอันไหนเปิดดูเมื่อไหร่ก็ได้
+const NAV: { id: ViewId; label: string; icon: string; group: string; step?: number }[] = [
+  { id: "home", label: "หน้าแรก", icon: "⌂", group: "" },
+
+  { id: "upload", label: "นำเข้าเอกสาร", icon: "↑", group: "งานของรอบนี้", step: 2 },
+  { id: "fix", label: "ยอดที่ไม่ตรง", icon: "≠", group: "งานของรอบนี้", step: 3 },
+  { id: "ota", label: "ก้อนโอน OTA", icon: "⊞", group: "งานของรอบนี้", step: 4 },
+  { id: "receipts", label: "ใบเสร็จรับเงิน", icon: "▧", group: "งานของรอบนี้", step: 5 },
+
+  { id: "report", label: "รายงาน", icon: "▤", group: "ตรวจสอบ" },
+  { id: "browse", label: "ค้นหารายการ", icon: "⌕", group: "ตรวจสอบ" },
+
+  { id: "settings", label: "ตั้งค่า", icon: "⚙", group: "ระบบ" },
+  { id: "help", label: "คู่มือการใช้งาน", icon: "?", group: "ระบบ" },
 ];
 
 const VIEW_IDS = NAV.map((item) => item.id) as string[];
@@ -190,16 +198,20 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
           </div>
 
           <nav aria-label="เมนูหลัก">
-            {NAV.map((item) => {
+            {NAV.map((item, index) => {
               const badge = item.id === "fix" ? dataset.reconciliation.exceptions.length
                 : item.id === "ota" ? effective.settlements.length
                 : 0;
+              const newGroup = item.group && item.group !== NAV[index - 1]?.group;
               return (
-                <button key={item.id} className={active === item.id ? "active" : ""} onClick={() => go(item.id)}>
-                  <span className="side-icon">{item.icon}</span>
-                  <b>{item.label}</b>
-                  {badge > 0 && <em>{badge}</em>}
-                </button>
+                <span key={item.id}>
+                  {newGroup && <i className="side-group">{item.group}</i>}
+                  <button className={active === item.id ? "active" : ""} onClick={() => go(item.id)}>
+                    <span className="side-icon">{item.step ?? item.icon}</span>
+                    <b>{item.label}</b>
+                    {badge > 0 && <em>{badge}</em>}
+                  </button>
+                </span>
               );
             })}
           </nav>
@@ -254,6 +266,7 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
             {active === "report" && (hasData ? <Report /> : <Home />)}
             {active === "upload" && <Upload />}
             {active === "settings" && <Settings />}
+            {active === "help" && <Help />}
 
             <footer>
               <span>ClearClose · กฎเวอร์ชัน {dataset.reconciliation.rulesetVersion}</span>

@@ -13,7 +13,7 @@ import type { AppSettings, EffectiveDataset, MatchDecision } from "../lib/settin
 
 export type Tone = "green" | "blue" | "amber" | "red" | "slate";
 
-export type ViewId = "home" | "fix" | "ota" | "receipts" | "browse" | "report" | "upload" | "settings";
+export type ViewId = "home" | "fix" | "ota" | "receipts" | "browse" | "report" | "upload" | "settings" | "help";
 
 export type WorkspaceValue = {
   /** เอกสารต้นทางดิบ ก่อนใช้ตัวกรองใด ๆ */
@@ -117,26 +117,63 @@ export function Progress({ done, total, label, outside = 0 }: {
   );
 }
 
-/** การ์ดงานบนหน้าแรก — กดแล้วไปทำงานนั้นเลย */
-export function TaskCard({ tone, icon, title, detail, count, unit, amount, action, onClick, disabled }: {
-  tone: Tone; icon: string; title: string; detail: string;
-  count: number; unit: string; amount?: string; action: string;
-  onClick: () => void; disabled?: boolean;
+/**
+ * ลำดับขั้นของการปิดรอบ
+ *
+ * งานกระทบยอดเป็นลำดับ ไม่ใช่แดชบอร์ด: ผูกบัญชี → ใส่เอกสาร → เคลียร์ที่ไม่ตรง →
+ * แตกยอดก้อนโอน → ออกใบเสร็จ → ปิดรอบ หน้าจอที่วางทุกอย่างเป็นการ์ดเท่ากันหมด
+ * บังคับให้คนใหม่ต้องเดาเองว่าเริ่มตรงไหน และเดาผิดได้ทั้งเดือนโดยไม่มีใครทัก
+ *
+ * แต่ละขั้นบอกสามอย่างเสมอ: ทำอะไร ทำไปทำไม และตอนนี้อยู่สถานะไหน
+ */
+export type StepState = "done" | "now" | "later" | "blocked" | "optional";
+
+const STEP_MARK: Record<StepState, string> = {
+  done: "✓", now: "▸", later: "·", blocked: "!", optional: "○",
+};
+
+const STEP_WORD: Record<StepState, string> = {
+  done: "เรียบร้อย", now: "ทำต่อตรงนี้", later: "ยังไม่ถึงคิว", blocked: "ติดอยู่", optional: "ทำหรือไม่ก็ได้",
+};
+
+export function StepList({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+  return (
+    <section className="steps">
+      <header>
+        <b>{title}</b>
+        {note && <span>{note}</span>}
+      </header>
+      <ol>{children}</ol>
+    </section>
+  );
+}
+
+export function Step({ index, state, title, why, figure, action, onAction }: {
+  index: number;
+  state: StepState;
+  title: string;
+  why: string;
+  figure?: string;
+  action?: string;
+  onAction?: () => void;
 }) {
   return (
-    <button type="button" className={`task-card ${tone} ${disabled ? "done" : ""}`} onClick={onClick} disabled={disabled}>
-      <span className="task-card-icon">{icon}</span>
-      <span className="task-card-body">
+    <li className={`step step-${state}`}>
+      <span className="step-mark" aria-hidden>{state === "done" ? STEP_MARK.done : index}</span>
+      <span className="step-body">
         <b>{title}</b>
-        <small>{detail}</small>
+        <small>{why}</small>
       </span>
-      <span className="task-card-figures">
-        <strong>{count.toLocaleString("en-US")}</strong>
-        <small>{unit}</small>
-        {amount && <em>{amount}</em>}
+      <span className="step-side">
+        {figure && <em>{figure}</em>}
+        <span className="step-state">{STEP_WORD[state]}</span>
       </span>
-      <span className="task-card-go">{disabled ? "เรียบร้อย" : action} {!disabled && "›"}</span>
-    </button>
+      {action && onAction && (
+        <button className={state === "now" || state === "blocked" ? "primary-button" : "secondary-button"} onClick={onAction}>
+          {action}
+        </button>
+      )}
+    </li>
   );
 }
 

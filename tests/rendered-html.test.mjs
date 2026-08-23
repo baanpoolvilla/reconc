@@ -17,18 +17,30 @@ test("the page is a server component that resolves its own data source", async (
   await access(new URL("../.next/BUILD_ID", import.meta.url));
 });
 
-test("the home screen is a list of jobs, not a wall of numbers", async () => {
+test("the home screen is the closing sequence, not a wall of numbers", async () => {
   const home = await read("../app/views-home.tsx");
 
-  // Every open job has its own card with a count and a way in.
-  assert.match(home, /TaskCard/);
-  assert.match(home, /ยอดที่ยังไม่ตรง|หาเงินเข้าไม่เจอ/);
-  assert.match(home, /ก้อนโอนจาก OTA/);
-  assert.match(home, /go\("fix"\)/);
-  assert.match(home, /go\("ota"\)/);
-  // Progress is the one number the screen leads with.
-  assert.match(home, /<Progress/);
-  // What a human decided is shown apart from what the rules produced, and undoable.
+  // ปิดรอบเป็นลำดับ ไม่ใช่แดชบอร์ด — หน้าแรกต้องตอบว่า "ตอนนี้ทำอะไรต่อ"
+  // แดชบอร์ดที่วางทุกอย่างเป็นการ์ดเท่ากันหมด บังคับให้คนใหม่เดาเองว่าเริ่มตรงไหน
+  assert.ok(home.includes("<StepList"), "หน้าแรกต้องเป็นลำดับขั้น");
+  assert.match(home, /ลำดับการปิดรอบ/);
+
+  // หกขั้น เรียงตามลำดับที่คนทำงานจริง
+  for (const step of [1, 2, 3, 4, 5, 6]) {
+    assert.ok(home.includes(`index={${step}}`), `ขาดขั้นที่ ${step}`);
+  }
+  for (const title of ["ผูกบัญชีธนาคาร", "นำเข้าเอกสาร", "เคลียร์ยอดที่ยังไม่ตรง", "แตกยอดก้อนโอน", "ออกใบเสร็จ", "ตรวจรายงาน"]) {
+    assert.ok(home.includes(title), `ขาดขั้น "${title}"`);
+  }
+  for (const view of ["settings", "upload", "fix", "ota", "receipts", "report"]) {
+    assert.ok(home.includes(`go("${view}")`), `ขั้นตอนต้องพาไปหน้า ${view} ได้`);
+  }
+
+  // "ทำต่อตรงนี้" ต้องมีได้ขั้นเดียว ไม่งั้นก็ยังเป็นแดชบอร์ดอยู่ดี
+  assert.match(home, /const steps = /);
+  // Progress ยังเป็นตัวเลขตัวเดียวที่นำหน้า
+  assert.ok(home.includes("<Progress"));
+  // สิ่งที่คนตัดสินเองยังแยกจากสิ่งที่กฎจับ และยกเลิกได้
   assert.match(home, /undoMatch/);
   assert.match(home, /staleDecisions/);
 });
@@ -278,16 +290,84 @@ test("the home screen cannot claim a period is clear while rows never entered it
   // ไม่มีใครบอกว่าบัญชีตรงกับช่องทางรับเงินไหน รายการทั้งเดือนจึงไม่เคยถูกนำมา
   // เทียบเลย ตัวหารเหลือใบเดียว แล้วหน้าแรกประกาศว่า "100% ของรอบนี้เคลียร์แล้ว"
   assert.match(home, /unmappedAccounts/);
-  assert.match(home, /ยังไม่ได้ผูกกับช่องทางรับเงิน/);
-  assert.match(home, /ไปผูกบัญชี/);
+  assert.ok(home.includes("ผูกบัญชีธนาคารกับช่องทางรับเงิน"), "ต้องเป็นขั้นแรกของการปิดรอบ");
+  assert.ok(home.includes("ไปผูกบัญชี"));
+  assert.ok(home.includes("จะไม่ถูกนำมากระทบยอดเลย"), "ต้องบอกด้วยว่าไม่ผูกแล้วเสียอะไร");
 
   // แถบความคืบหน้าต้องบอกจำนวนที่อยู่นอกตัวหารด้วย ไม่ใช่รายงานแค่เปอร์เซ็นต์
-  assert.match(home, /outside=\{outsideCount\}/);
+  assert.ok(home.includes("outside={outsideCount}"));
   assert.match(ui, /outside\?: number/);
   assert.match(ui, /ยังไม่เข้าสู่การกระทบยอด/);
   // และห้ามพูดว่า "เคลียร์แล้ว" ลอย ๆ โดยไม่บอกว่าเทียบกับอะไร
   assert.doesNotMatch(ui, /% ของรอบนี้เคลียร์แล้ว/);
 });
+
+test("the receipt screen prints the frozen copy, not today's numbers", async () => {
+  const view = await read("../app/views-receipts.tsx");
+
+  // ทุกตัวเลขบนใบมาจากสำเนาที่แช่แข็งไว้ตอนออกใบ ไม่ใช่คำนวณใหม่จากข้อมูลปัจจุบัน
+  assert.match(view, /receipt\.document/);
+  assert.match(view, /document\.netSatang/);
+  assert.match(view, /document\.grossSatang/);
+  // ไฟล์ PDF ออกทางหน้าพิมพ์ของเบราว์เซอร์ ซึ่งฝังฟอนต์ไทยให้ถูกต้อง
+  assert.match(view, /window\.print\(\)/);
+  assert.match(view, /no-print/);
+  // ยกเลิกได้ แต่ต้องมีเหตุผลกำกับเสมอ
+  assert.match(view, /เหตุผลที่ยกเลิก/);
+  // เลขที่เอกสารต้องเดินจากที่เดียว หน้าจอจึงต้องปฏิเสธโหมดเก็บในเครื่อง
+  assert.match(view, /if \(!online\)/);
+});
+
+test("the receipt sheet keeps its own print rules", async () => {
+  const css = await read("../app/globals.css");
+
+  assert.match(css, /@media print/);
+  // เมนู ปุ่ม และแถบบนไม่ใช่ส่วนหนึ่งของเอกสารที่ส่งให้คนนอก
+  assert.match(css, /\.no-print[^{]*\{[^}]*display: none/);
+  assert.match(css, /\.receipt-sheet/);
+  assert.match(css, /@page \{ size: A4/);
+});
+
+test("six receipts fit one A4 sheet, and only the sheet reaches the paper", async () => {
+  const view = await read("../app/views-receipts.tsx");
+  const css = await read("../app/globals.css");
+
+  // แผ่นถูกแบ่งด้วยการสั่งขึ้นหน้าใหม่ที่ช่องที่หก ไม่ใช่การหั่นอาเรย์เป็นชุด ๆ เอง
+  assert.match(view, /index % 6 === 5/);
+  assert.match(view, /sheet-break/);
+  assert.match(css, /\.sheet-break \{ break-after: page/);
+  assert.match(css, /\.receipt-grid \{[^}]*repeat\(2, 1fr\)/);
+
+  // สามแถวสูง 87mm บวกช่องไฟ 5mm สองช่อง = 271mm พอดีใน A4 ที่หักขอบ 10mm แล้ว 277mm
+  assert.match(css, /\.receipt-mini \{[^}]*min-height: 86mm/);
+  assert.match(css, /@page \{ size: A4; margin: 10mm/);
+
+  // ที่เหลือบนหน้าจอ — ตารางรายการ แบนเนอร์ หัวข้อ — ไม่ใช่ส่วนหนึ่งของเอกสาร
+  // ระบุแบบ "ทุกอย่างที่ไม่ใช่แผ่นเอกสาร" ไม่ใช่ไล่ซ่อนทีละคลาส
+  assert.match(css, /\.content > \*:not\(\.receipt-shell\) \{ display: none/);
+
+  // ใบที่ยกเลิกแล้วไม่ใช่เอกสารที่ส่งให้ใครได้ จึงเลือกพิมพ์ไม่ได้
+  assert.match(view, /disabled=\{Boolean\(row\.voidedAt\)\}/);
+});
+
+test("a document imported by mistake can be deleted, and says what goes with it", async () => {
+  const view = await read("../app/views-data.tsx");
+  const route = await read("../app/api/documents/[id]/route.ts");
+
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /deleteDocument/);
+  // ลบแล้วกระทบยอดใหม่ในคำขอเดียวกัน หน้าจอจึงไม่มีจังหวะที่โชว์ตัวเลขของเอกสารที่ไม่มีแล้ว
+  assert.match(route, /runReconciliation/);
+
+  // การลบต้องผ่านการยืนยันที่บอกผลกระทบก่อน ไม่ใช่ปุ่มเดียวจบ
+  assert.match(view, /ConfirmRemoval/);
+  assert.match(view, /pendingRemoval/);
+  assert.match(view, /ย้อนกลับไม่ได้/);
+  // สองอย่างที่ไม่หายไปกับเอกสาร และผู้ใช้ต้องรู้ก่อนกด
+  assert.match(view, /การจับคู่ที่คุณยืนยันเองไม่ถูกลบ/);
+  assert.match(view, /ใบเสร็จรับเงินที่ออกไปแล้วไม่หาย/);
+});
+
 
 test("the fix queue shows every instalment of the same reservation", async () => {
   const match = await read("../app/views-match.tsx");
@@ -301,4 +381,38 @@ test("the fix queue shows every instalment of the same reservation", async () =>
   assert.match(match, /วัน Check-in/);
   assert.match(match, /วันที่จอง/);
   assert.match(css, /\.instalments/);
+});
+
+test("the manual lives in the app and reads the real rules", async () => {
+  const help = await read("../app/views-help.tsx");
+  const workspace = await read("../app/workspace.tsx");
+
+  // คู่มือที่ต้องไปเปิดจากที่อื่นคือคู่มือที่ไม่มีใครเปิด — มันต้องอยู่ในเมนู
+  assert.match(workspace, /views-help/);
+  assert.match(workspace, /คู่มือการใช้งาน/);
+
+  // หัวข้อที่คนถามจริง ๆ ตอนใช้งาน
+  for (const topic of ["เริ่มใช้ครั้งแรก", "งานประจำเดือน", "ก้อนโอน OTA", "ใบเสร็จรับเงิน", "แก้เมื่อทำผิด"]) {
+    assert.ok(help.includes(topic), `คู่มือขาดหัวข้อ ${topic}`);
+  }
+
+  // ตารางกฎอ่านจาก RULES ตัวจริง ไม่ใช่พิมพ์ซ้ำไว้ในคู่มือ ซึ่งจะเก่าโดยไม่มีใครรู้
+  assert.match(help, /RULES\.map/);
+  assert.match(help, /from "\.\.\/lib\/settings"/);
+
+  // สองข้อที่บังคับเสมอ ต้องอยู่ในคู่มือด้วยคำเดียวกับที่ระบบใช้
+  assert.match(help, /ยอดต้องตรงพอดี/);
+  assert.match(help, /กฎที่แก้ไม่ได้/);
+});
+
+test("the sidebar groups menus by the question a person is asking", async () => {
+  const workspace = await read("../app/workspace.tsx");
+
+  // แปดเมนูเรียงกันเป็นแถวเดียวไม่ได้บอกว่าอันไหนคืองานวันนี้ อันไหนเปิดเมื่อไหร่ก็ได้
+  assert.match(workspace, /งานของรอบนี้/);
+  assert.match(workspace, /ตรวจสอบ/);
+  assert.match(workspace, /side-group/);
+  // งานประจำรอบมีเลขขั้นตรงกับลำดับบนหน้าแรก
+  assert.match(workspace, /step: 2/);
+  assert.match(workspace, /step: 5/);
 });
