@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { migrate } from "../lib/db/client.mjs";
 import { holdLine, listAuditEvents, listHolds, releaseLine } from "../lib/db/repository.mjs";
 import { assembleDataset } from "../lib/dataset-builder.mjs";
-import { DEFAULT_SETTINGS, applySettings } from "../lib/settings-core.mjs";
+import { DEFAULT_SETTINGS, applySettings, scopeToPeriod } from "../lib/settings-core.mjs";
 import { DEFAULT_SETTLEMENT, expectedStayWindow, normalizeSettlement } from "../lib/settlements.mjs";
 
 // เงินเข้าที่พักไว้
@@ -211,4 +211,62 @@ test("พักก้อนเดิมซ้ำ เป็นการแก้�
 test("ปลดพักรายการที่ไม่มีอยู่ คืน null แทนที่จะพัง", async () => {
   const db = await freshDb();
   assert.equal(await releaseLine(db, "ไม่มีจริง"), null);
+});
+
+// ── ก้อนต้นเดือนเมื่อ "มี" รายงานเดือนก่อนแล้ว ──────────────────────────────
+//
+// พักไว้เป็นทางออกเมื่อเอกสารยังมาไม่ครบเท่านั้น พออัปโหลดเดือนที่ขาดเข้ามา
+// ก้อนเดียวกันต้องจับคู่ได้เองทันที ไม่ต้องพักและไม่ต้องทำอะไรเพิ่ม
+
+test("ก้อน OTA วันที่ 1 ส.ค. จับกับรายงานเดือน ก.ค. ได้ เมื่อโหลดทั้งสองเดือน", () => {
+  const dataset = build(
+    [
+      // เช็คเอาท์ปลายกรกฎาคม — อยู่ในรายงานของเดือนกรกฎาคม
+      receipt("RCP-A", "2026-07-20", 356720, { checkIn: "2026-07-21", checkOut: "2026-07-22" }),
+      receipt("RCP-B", "2026-07-24", 956284, { checkIn: "2026-07-25", checkOut: "2026-07-26" }),
+    ],
+    [otaCredit("L-AUG01", "2026-08-01", 356720 + 956284)],
+    "2026-08",
+  );
+  const effective = applySettings(dataset, DEFAULT_SETTINGS, [], []);
+  const [proposal] = effective.settlements;
+
+  assert.equal(proposal.status, "EXACT", "ยอดตรงพอดีกับสองใบของเดือนก่อน");
+  assert.deepEqual([...proposal.selectedIds].sort(), ["RCP-A", "RCP-B"]);
+  assert.equal(proposal.crossPeriod, true, "ต้องติดธงว่าเหลื่อมเดือน");
+  assert.equal(proposal.period, "2026-08", "งวดของก้อนคือเดือนที่เงินเข้าบัญชี");
+  assert.deepEqual(proposal.sourcePeriods, ["2026-07"], "คำจองมาจากกรกฎาคม");
+
+  // รอบโอนวัดจากวันเช็คเอาท์ ไม่ใช่วันที่รับเงินหรือเดือนของ statement
+  const lags = proposal.candidates.filter((row) => row.selected).map((row) => row.lagDays).sort((a, b) => a - b);
+  assert.deepEqual(lags, [6, 10]);
+
+  // มีรายงานเดือนก่อนแล้ว จึงไม่ใช่เคสที่ต้องพักไว้
+  assert.equal(proposal.suggestHold, false);
+});
+
+test("ก้อนเดียวกันเมื่อยังไม่มีรายงานเดือนก่อน กลายเป็นเคสพักไว้แทน", () => {
+  const dataset = build([], [otaCredit("L-AUG01", "2026-08-01", 1313004)], "2026-08");
+  const [proposal] = applySettings(dataset, DEFAULT_SETTINGS, [], []).settlements;
+
+  assert.equal(proposal.status, "EMPTY");
+  assert.equal(proposal.suggestHold, true);
+  assert.deepEqual(proposal.missingPeriods, ["2026-07"], "ต้องชี้ไปที่กรกฎาคม ไม่ใช่สิงหาคม");
+});
+
+test("ก้อนที่เหลื่อมเดือน เห็นได้จากทั้งสองงวด", () => {
+  const dataset = build(
+    [receipt("RCP-A", "2026-07-20", 500000, { checkIn: "2026-07-21", checkOut: "2026-07-22" })],
+    [otaCredit("L-AUG01", "2026-08-01", 500000)],
+    "2026-08",
+  );
+  const effective = applySettings(dataset, DEFAULT_SETTINGS, [], []);
+
+  for (const period of ["2026-07", "2026-08"]) {
+    const scoped = scopeToPeriod(effective, period);
+    assert.ok(
+      scoped.settlements.some((item) => item.lineId === "L-AUG01"),
+      `เปิดงวด ${period} ต้องเห็นก้อนนี้`,
+    );
+  }
 });
