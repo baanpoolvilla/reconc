@@ -57,12 +57,25 @@ test("the workbench shows both sides, the difference, and refuses a silent fudge
   assert.match(match, /confirmMatch/);
 });
 
-test("the OTA screen explains why the amounts can never tie out exactly", async () => {
+test("the OTA screen says which OTA a payout came from and how the amounts tie out", async () => {
   const match = await read("../app/views-match.tsx");
 
-  assert.match(match, /หักค่าคอม/);
+  // The collection report already carries the net figure each OTA will send, so
+  // most payouts tie out to the satang. The screen must say so — describing every
+  // batch as "commission was deducted" is what hid the ones that genuinely differ.
+  assert.match(match, /ยอดตรงพอดี/);
+  assert.match(match, /matchKind/);
   assert.match(match, /feeRate/);
   assert.match(match, /SETTLEMENT/);
+  // Each payout names its OTA and the payout cycle it was read against.
+  assert.match(match, /providerLabel/);
+  assert.match(match, /anchorField/);
+  assert.match(match, /เช็คอิน/);
+  assert.match(match, /เช็คเอาท์/);
+  // An exact total is not proof on its own: several exact combinations, or rows
+  // outside the OTA's normal cycle, have to reach the reviewer before they confirm.
+  assert.match(match, /ambiguous/);
+  assert.match(match, /outOfWindowCount/);
   // The proposal is inert until a human confirms it.
   assert.match(match, /ยังไม่เปลี่ยนจนกว่าจะกดยืนยัน|จนกว่าจะกดยืนยัน/);
 });
@@ -190,3 +203,4 @@ test("keeps product metadata and starter cleanup intact", async () => {
   assert.match(packageJson, /clearclose-reconciliation/);
   await access(new URL("../public/og.png", import.meta.url));
 });
+

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Banner, EmptyState, PageHeading, Pill, SearchBox, Tabs, useWorkspace } from "./ui";
 import { type Receipt, type StatementLine, baht, thaiDate, thaiMonthLabel } from "../lib/dataset";
-import { DECISION_REASONS, type DecisionReason, dayGap } from "../lib/settings";
+import { DECISION_REASONS, type DecisionReason, type SettlementProposal, dayGap } from "../lib/settings";
 
 // งานจับคู่ — ทั้งการแก้ยอดที่ไม่ตรง และการแตกยอดก้อนโอนของ OTA
 //
@@ -416,6 +416,32 @@ const whyDetail = (reason: string) => ({
 
 // ── งานที่ 2 · ก้อนโอน OTA ───────────────────────────────────────────────────
 
+/** คำตัดสินสั้น ๆ ของหนึ่งก้อน — บอกว่าตัวเลขพูดว่าอะไร ไม่ใช่ผ่าน/ไม่ผ่าน */
+function settlementVerdict(item: SettlementProposal) {
+  const rows = item.selectedIds.length;
+  if (item.status === "EMPTY") return "ไม่พบคำจองของเจ้านี้";
+  if (item.status === "SHORT") return `${rows} คำจอง · ยังขาด ${baht(-item.feeSatang)}`;
+  if (item.matchKind === "EXACT") return `${rows} คำจอง · ยอดตรงพอดี`;
+  if (item.matchKind === "ROUNDING") return `${rows} คำจอง · ต่าง ${baht(item.feeSatang)}`;
+  if (item.status === "FEE_HIGH") return `คอม ${item.feeRate}% สูงผิดปกติ`;
+  return `${rows} คำจอง · คอม ${item.feeRate}%`;
+}
+
+/**
+ * สิ่งที่ต้องบอกก่อนคนกดยืนยัน
+ *
+ * ข้อเสนอที่ยอดตรงพอดีไม่ได้แปลว่าถูกเสมอไป — ถ้ามีชุดที่ตรงพอดีหลายชุด หรือใบที่
+ * เลือกมาอยู่นอกรอบโอนปกติของเจ้านั้น ตัวเลขตัดสินให้ไม่ได้ ต้องให้คนดู
+ */
+function settlementNote(item: SettlementProposal) {
+  const notes: string[] = [];
+  if (item.ambiguous) notes.push(`มีชุดคำจองที่ยอดตรงพอดีมากกว่าหนึ่งชุด (${item.exactCount} ชุด) ระบบเลือกชุดที่วันใกล้รอบโอนที่สุดให้ก่อน`);
+  if (item.outOfWindowCount) notes.push(`${item.outOfWindowCount} คำจองอยู่นอกรอบโอนปกติของ${item.providerLabel || "เจ้านี้"}`);
+  if (item.status === "SHORT") notes.push("รวมคำจองที่หาได้ทั้งหมดแล้วยังไม่ถึงยอดที่เข้าบัญชี — คำจองที่เหลือน่าจะอยู่ในเอกสารเดือนก่อนที่ยังไม่ได้อัปโหลด");
+  if (item.status === "EMPTY") notes.push(`ไม่มีคำจองของ${item.providerLabel || "เจ้านี้"}ที่วันตั้งต้นอยู่ก่อนวันที่เงินเข้า — ถ้าก้อนนี้เป็นของเดือนก่อน ต้องอัปโหลดรายงานการรับเงินเดือนนั้นก่อน`);
+  return notes.join(" · ");
+}
+
 export function Settlements() {
   const { effective, settings, go } = useWorkspace();
   const proposals = effective.settlements;
@@ -427,14 +453,19 @@ export function Settlements() {
     <>
       <PageHeading
         title="ก้อนโอนจาก OTA"
-        description="Airbnb Trip.com และ Booking.com โอนรวมเป็นก้อนหลังหักค่าคอมแล้ว ระบบเสนอให้ว่าก้อนนี้น่าจะเป็นของคำจองไหนบ้าง"
+        description="Airbnb Trip.com และ Booking.com โอนรวมหลายคำจองมาเป็นก้อนตามรอบของตัวเอง ระบบเสนอให้ว่าก้อนนี้ประกอบด้วยคำจองไหนบ้าง"
         action={<button className="ghost-button" onClick={() => go("home")}>← กลับหน้าแรก</button>}
       />
 
-      <Banner tone="blue" title="ทำไมยอดถึงไม่มีวันตรงพอดี">
-        OTA หักค่าคอมก่อนโอน เงินที่เข้าบัญชีจึงน้อยกว่ายอดที่บันทึกไว้เสมอ
-        ระบบจะไล่เลือกคำจองที่วันใกล้ก้อนโอนที่สุด (ภายใน {settings.settlement.windowDays} วัน) จนยอดรวมท่วมก้อน แล้วเหลือส่วนต่างเป็นค่าคอม
-        ตัวเลขจะยังไม่เปลี่ยนจนกว่าจะกดยืนยัน
+      <Banner tone="blue" title="ระบบอ่านก้อนโอนยังไง">
+        ก้อนหนึ่งก้อนถูกอ่านจาก statement ว่าเป็นของเจ้าไหน แล้วมองเห็นเฉพาะคำจองที่รับเงินผ่านช่องทางของเจ้านั้น
+        {settings.settlement.providers.map((provider) => (
+          <span key={provider.id} className="settlement-rule">
+            <b>{provider.label}</b> {provider.note || `นับจากวัน${provider.anchor === "checkIn" ? "เช็คอิน" : "เช็คเอาท์"}`}
+          </span>
+        ))}
+        รายงานการรับเงินบันทึกยอดสุทธิที่ OTA จะโอนจริงไว้แล้ว ระบบจึงหาชุดที่ <b>ยอดตรงพอดี</b> ก่อน
+        หาไม่เจอค่อยเสนอชุดที่ใกล้ที่สุดแล้วบอกว่าส่วนต่างเท่าไร ตัวเลขจะยังไม่เปลี่ยนจนกว่าจะกดยืนยัน
       </Banner>
 
       {!proposals.length && (
@@ -455,21 +486,15 @@ export function Settlements() {
                 className={`queue-row ${current?.id === item.id ? "active" : ""}`}
                 onClick={() => setOpenId(item.id)}
               >
-                <span className={`queue-dot ${item.status === "READY" ? "green" : "amber"}`} />
+                <span className={`queue-dot ${item.status === "EXACT" || item.status === "READY" ? "green" : "amber"}`} />
                 <span className="queue-name">
                   <b>{baht(item.netSatang)}</b>
                   <small>
-                    {thaiDate(item.date)} · {item.channel} · •••{item.account}
+                    {thaiDate(item.date)} · {item.providerLabel || item.channel} · •••{item.account}
                     {item.crossPeriod && <> · <span className="cross-period">↷ คำจอง{item.sourcePeriods.map(thaiMonthLabel).join(", ")}</span></>}
                   </small>
                 </span>
-                <span className="queue-amount small">
-                  {item.status === "READY"
-                    ? `${item.candidates.filter((row) => row.selected).length} คำจอง · คอม ${item.feeRate}%`
-                    : item.status === "SHORT" ? "หาคำจองไม่พอ"
-                    : item.status === "EMPTY" ? "ไม่พบคำจองใกล้เคียง"
-                    : `คอม ${item.feeRate}% สูงผิดปกติ`}
-                </span>
+                <span className="queue-amount small">{settlementVerdict(item)}</span>
               </button>
             ))}
           </div>
@@ -479,16 +504,41 @@ export function Settlements() {
               <>
                 <div className="settlement-head">
                   <div>
-                    <small>เงินเข้าบัญชี •••{current.account}</small>
+                    <small>เงินเข้าบัญชี •••{current.account}{current.providerLabel && <> · {current.providerLabel}</>}</small>
                     <h3>{baht(current.netSatang)}</h3>
                     <p>{thaiDate(current.date)} {current.time} น. · {current.detail || current.description}</p>
+                    {current.lagDays.length > 0 && (
+                      <p className="settlement-lag">
+                        รอบโอน: นับจากวัน{current.anchorField === "checkIn" ? "เช็คอิน" : "เช็คเอาท์"} ·
+                        {" "}ห่าง {[...new Set(current.lagDays)].sort((a, b) => a - b).join(", ")} วัน
+                      </p>
+                    )}
                   </div>
                   <div className="settlement-fee">
-                    <small>ส่วนต่างที่ระบบเสนอว่าเป็นค่าคอม</small>
-                    <b>{baht(current.feeSatang)}</b>
-                    <em>{current.feeRate}% ของยอดเต็ม</em>
+                    {current.matchKind === "EXACT" ? (
+                      <>
+                        <small>ยอดรวมของคำจองที่เสนอ</small>
+                        <b>{baht(current.grossSatang)}</b>
+                        <em>ตรงกับก้อนพอดี ไม่มีส่วนต่าง</em>
+                      </>
+                    ) : current.matchKind === "NONE" ? (
+                      <>
+                        <small>ยังไม่มีคำจองให้เลือก</small>
+                        <b>—</b>
+                        <em>ไม่มีคำจองของเจ้านี้ที่รอบโอนถึงก้อนนี้</em>
+                      </>
+                    ) : (
+                      <>
+                        <small>{current.matchKind === "ROUNDING" ? "ส่วนต่างระดับปัดเศษ" : current.matchKind === "SHORT" ? "ยังขาดอยู่" : "ส่วนต่างที่ระบบเสนอว่าเป็นค่าคอม"}</small>
+                        <b>{baht(Math.abs(current.feeSatang))}</b>
+                        <em>{current.matchKind === "SHORT" ? "รวมคำจองที่หาได้แล้วยังไม่ถึงยอดที่เข้าบัญชี" : `${current.feeRate}% ของยอดเต็ม`}</em>
+                      </>
+                    )}
                   </div>
                 </div>
+                {settlementNote(current) && (
+                  <Banner tone="amber" title="ตรวจก่อนยืนยัน">{settlementNote(current)}</Banner>
+                )}
                 <Basket
                   key={current.id}
                   kind="SETTLEMENT"

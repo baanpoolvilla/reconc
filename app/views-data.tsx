@@ -8,6 +8,7 @@ import {
   type AppSettings,
   type BankAccount,
   type Facet,
+  type SettlementProvider,
   type UnmappedAccount,
   DEFAULT_SETTINGS,
   EXCLUSION_SCOPE_LABEL,
@@ -521,7 +522,13 @@ export function Settings() {
         <Stat label="รายการในเอกสาร" value={`${effective.sourceReceiptCount}`} detail={baht(effective.sourceReceiptSatang)} />
         <Stat label="ไม่นับตามที่ตั้งไว้" value={`${effective.excluded.length}`} detail={baht(effective.excludedSatang)} tone="red" />
         <Stat label="เข้าสู่การกระทบยอด" value={`${effective.dataset.receipts.length}`} detail={baht(effective.sourceReceiptSatang - effective.excludedSatang)} tone="green" />
-        <Stat label="ก้อนโอน OTA ที่พบ" value={`${effective.settlements.length}`} detail={settings.settlement.enabled ? "เปิดใช้งานอยู่" : "ปิดอยู่"} tone="blue" />
+        <Stat
+          label="ก้อนโอน OTA ที่พบ"
+          value={`${effective.settlements.length}`}
+          detail={!settings.settlement.enabled ? "ปิดอยู่"
+            : `ยอดตรงพอดี ${effective.settlements.filter((item) => item.status === "EXACT").length} ก้อน`}
+          tone="blue"
+        />
       </section>
 
       <nav className="settings-nav">
@@ -612,9 +619,26 @@ export function Settings() {
               ))}
             </div>
           </div>
+          <div className="settings-field">
+            <span><b>ส่วนต่างที่ถือว่าเป็นการปัดเศษ</b><small>ต่างกันไม่เกินนี้ ระบบเรียกว่าปัดเศษ ไม่ใช่ค่าคอม</small></span>
+            <div className="segmented">
+              {[0, 1, 5, 20, 100].map((baht) => (
+                <button key={baht} className={settings.settlement.roundingSatang === baht * 100 ? "active" : ""} disabled={busy} onClick={() => patchSettlement({ roundingSatang: baht * 100 })}>
+                  {baht === 0 ? "ไม่ยอมเลย" : `${baht} บาท`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <ProviderEditor
+            providers={settings.settlement.providers}
+            onChange={(providers) => patchSettlement({ providers })}
+            disabled={busy}
+          />
+
           <TagEditor
-            title="ข้อความที่บอกว่าเป็นก้อนโอนของ OTA"
-            hint="ระบบเทียบกับช่องทาง คำอธิบาย และรายละเอียดของเงินเข้าแต่ละบรรทัด"
+            title="ข้อความที่บอกว่าเป็นก้อนโอนของ OTA แต่ไม่บอกว่าเจ้าไหน"
+            hint="ก้อนที่เข้าข่ายแต่ระบุเจ้าไม่ได้ ยังถูกเสนอ เพียงแต่มองเห็นคำจองของทุกเจ้าและไม่มีรอบโอนให้อ้าง"
             values={settings.settlement.patterns}
             onChange={(patterns) => patchSettlement({ patterns })}
             disabled={busy}
@@ -901,6 +925,94 @@ function BahtField({ label, satang, disabled, onCommit }: {
       />
       <em>บาท</em>
     </span>
+  );
+}
+
+/**
+ * รอบโอนของ OTA แต่ละเจ้า
+ *
+ * สามอย่างที่ต่างกันจริงระหว่างเจ้า และเป็นสามอย่างที่ตัดสินว่าข้อเสนอถูกหรือผิด:
+ * ข้อความบน statement ที่บอกว่าก้อนเป็นของใคร, ช่องทางรับเงินฝั่งสมุดบัญชีของเจ้านั้น,
+ * และวันที่เจ้านั้นใช้ตั้งรอบโอน ที่เหลือเป็นแค่ตัวเลขช่วงวัน
+ */
+function ProviderEditor({ providers, onChange, disabled }: {
+  providers: SettlementProvider[]; onChange: (next: SettlementProvider[]) => void; disabled: boolean;
+}) {
+  const patchAt = (index: number, partial: Partial<SettlementProvider>) =>
+    onChange(providers.map((item, at) => (at === index ? { ...item, ...partial } : item)));
+
+  return (
+    <div className="provider-editor">
+      <b>รอบโอนของแต่ละ OTA</b>
+      <small>
+        ก้อนหนึ่งก้อนจะมองเห็นเฉพาะคำจองที่รับเงินผ่านช่องทางของเจ้าที่ตรงกับข้อความบน statement
+        ส่วนช่วงวันใช้จัดลำดับและติดป้ายว่าใบไหนอยู่นอกรอบ ไม่ได้ตัดคำจองทิ้ง — ที่ตัดจริงคือ
+        ก้อนโอนต้องเข้าบัญชี <em>หลัง</em> วันตั้งต้นเสมอ
+      </small>
+
+      {!providers.length && <span className="table-note">ยังไม่ได้ตั้งเจ้าไหนไว้เลย</span>}
+
+      {providers.map((provider, index) => (
+        <div key={provider.id} className="provider-card">
+          <div className="provider-head">
+            <b>{provider.label}</b>
+            <span className="table-note">{provider.note}</span>
+          </div>
+
+          <div className="settings-field">
+            <span><b>วันตั้งต้นของรอบโอน</b><small>วันที่เจ้านี้ใช้นับ ไม่ใช่วันที่เราบันทึกรับเงิน</small></span>
+            <div className="segmented">
+              {([["checkOut", "วันเช็คเอาท์"], ["checkIn", "วันเช็คอิน"], ["date", "วันที่รับเงิน"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={provider.anchor === value ? "active" : ""}
+                  disabled={disabled}
+                  onClick={() => patchAt(index, { anchor: value })}
+                >{label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-field">
+            <span>
+              <b>รอบโอนปกติ</b>
+              <small>
+                โอนหลังวันตั้งต้นกี่วัน · ตอนนี้ {provider.typicalLagDays[0]}–{provider.typicalLagDays[1]} วัน
+                และยอมรับได้ถึง {provider.maxLagDays} วัน
+              </small>
+            </span>
+            <div className="segmented">
+              {([[0, 1], [1, 3], [7, 10], [10, 14]] as const).map(([low, high]) => (
+                <button
+                  key={`${low}-${high}`}
+                  className={provider.typicalLagDays[0] === low && provider.typicalLagDays[1] === high ? "active" : ""}
+                  disabled={disabled}
+                  onClick={() => patchAt(index, {
+                    typicalLagDays: [low, high],
+                    maxLagDays: Math.max(provider.maxLagDays, high),
+                  })}
+                >{low}–{high} วัน</button>
+              ))}
+            </div>
+          </div>
+
+          <TagEditor
+            title={`ข้อความบน statement ที่บอกว่าเป็นก้อนของ ${provider.label}`}
+            hint="เทียบกับช่องทาง คำอธิบาย และรายละเอียดของเงินเข้าแต่ละบรรทัด"
+            values={provider.patterns}
+            onChange={(patterns) => patchAt(index, { patterns })}
+            disabled={disabled}
+          />
+          <TagEditor
+            title={`ช่องทางรับเงินของ ${provider.label}`}
+            hint="เฉพาะรายการที่รับเงินผ่านช่องทางเหล่านี้เท่านั้นที่จะถูกเสนอเข้าก้อนของเจ้านี้"
+            values={provider.methods}
+            onChange={(methods) => patchAt(index, { methods })}
+            disabled={disabled}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 

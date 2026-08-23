@@ -218,6 +218,15 @@ code { padding: 2px 6px; border-radius: 6px; background: rgba(20,69,58,.08); fon
 .settlement-fee { text-align: right; }
 .settlement-fee b { display: block; margin-top: 4px; font: 650 20px var(--serif); color: #8a5a0d; }
 .settlement-fee em { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; font-style: normal; }
+.settlement-lag { margin-top: 5px !important; font-size: 11.5px; color: #8a5a0d; }
+.settlement-rule { display: block; margin: 6px 0 0; padding-left: 12px; border-left: 2px solid #c9d8ee; font-size: 12.5px; }
+.settlement-rule b { margin-right: 6px; }
+.provider-editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.provider-editor > b { display: block; font-size: 13.5px; }
+.provider-editor > small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.provider-card { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+.provider-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.provider-head b { font-size: 14px; }
 
 .basket { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
 .basket-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 16px; border-bottom: 1px solid var(--line); }

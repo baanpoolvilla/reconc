@@ -24,6 +24,8 @@ export function Home() {
   const bankSide = exceptions.filter((item) => item.reason === "UNMATCHED_BANK_CREDIT").length;
   const settlements = effective.settlements.length;
   const settlementSatang = effective.settlements.reduce((sum, item) => sum + item.netSatang, 0);
+  // ก้อนที่ยอดตรงพอดี ชุดเดียว และอยู่ในรอบโอน — กดยืนยันได้โดยไม่ต้องคิดต่อ
+  const exactSettlements = effective.settlements.filter((item) => item.status === "EXACT" && !item.ambiguous).length;
   const done = summary.matchedReceipts;
   const total = summary.inScopeReceipts;
   const staleCount = summary.staleDecisions ?? 0;
@@ -90,7 +92,7 @@ export function Home() {
           tone="amber"
           icon="⊞"
           title="ก้อนโอนจาก OTA รอแตกยอด"
-          detail="Airbnb Trip.com Booking.com โอนรวมก้อนหลังหักค่าคอม"
+          detail={exactSettlements ? `${exactSettlements} ก้อนยอดตรงพอดี เหลือ ${settlements - exactSettlements} ก้อนที่ต้องดูก่อน` : "Airbnb Trip.com Booking.com โอนรวมหลายคำจองมาเป็นก้อน"}
           count={settlements}
           unit="ก้อน"
           amount={baht(settlementSatang)}

@@ -19,10 +19,31 @@ export type MatchOptions = {
   securityDepositEnabled: boolean;
 };
 
+/** วันที่ OTA เจ้านี้ใช้ตั้งรอบโอน — Trip/Booking นับจากเช็คเอาท์ Airbnb นับจากเช็คอิน */
+export type SettlementAnchor = "checkIn" | "checkOut" | "date";
+
+export type SettlementProvider = {
+  id: string;
+  label: string;
+  /** ข้อความบน statement ที่บอกว่าก้อนนี้เป็นของเจ้านี้ */
+  patterns: string[];
+  /** ช่องทางรับเงินฝั่งสมุดบัญชีของเจ้านี้ */
+  methods: string[];
+  anchor: SettlementAnchor | string;
+  minLagDays: number;
+  maxLagDays: number;
+  /** รอบโอนปกติ [ต่ำสุด, สูงสุด] ใช้จัดลำดับข้อเสนอ ไม่ได้ใช้ตัดคำจองทิ้ง */
+  typicalLagDays: number[];
+  note: string;
+};
+
 export type SettlementSettings = {
   enabled: boolean;
   windowDays: number;
   maxFeeRate: number;
+  /** ส่วนต่างที่ถือว่าเป็นการปัดเศษ ไม่ใช่ค่าคอม */
+  roundingSatang: number;
+  providers: SettlementProvider[];
   patterns: string[];
   otaMethods: string[];
 };
@@ -98,6 +119,12 @@ export type SettlementCandidate = {
   group: string;
   amountSatang: number;
   dayGap: number;
+  /** วันที่เจ้าของก้อนใช้ตั้งรอบโอนสำหรับใบนี้ */
+  anchorDate: string;
+  /** ก้อนโอนเข้าบัญชีหลังวันตั้งต้นกี่วัน */
+  lagDays: number;
+  /** อยู่ในรอบโอนปกติของเจ้านี้หรือเปล่า */
+  inPayoutWindow: boolean;
   period: string;
   /** รับเงินไว้คนละเดือนกับที่ก้อนโอนเข้าบัญชี */
   crossPeriod: boolean;
@@ -111,6 +138,10 @@ export type SettlementProposal = {
   date: string;
   /** งวดที่ก้อนโอนเข้าบัญชี */
   period: string;
+  /** OTA เจ้าของก้อนนี้ — ว่างคือ statement ไม่ได้บอกว่าเป็นของเจ้าไหน */
+  providerId: string;
+  providerLabel: string;
+  anchorField: SettlementAnchor | string;
   /** งวดที่รายการในก้อนถูกบันทึกรับเงินไว้ — มากกว่าหนึ่งคือก้อนที่เหลื่อมเดือน */
   sourcePeriods: string[];
   crossPeriod: boolean;
@@ -122,7 +153,21 @@ export type SettlementProposal = {
   grossSatang: number;
   feeSatang: number;
   feeRate: number;
-  status: "READY" | "FEE_HIGH" | "SHORT" | "EMPTY";
+  /**
+   * EXACT    — ยอดรวมตรงกับก้อนพอดี ไม่มีส่วนต่าง
+   * ROUNDING — ต่างกันไม่เกินที่ตั้งไว้ว่าเป็นการปัดเศษ
+   * FEE      — ต่างกันจริง ส่วนต่างถูกเสนอว่าเป็นค่าคอม
+   * SHORT    — รวมคำจองที่หาได้แล้วยังไม่ถึงยอดที่เข้าบัญชี
+   * NONE     — ไม่มีคำจองให้เลือกเลย
+   */
+  matchKind: "EXACT" | "ROUNDING" | "FEE" | "SHORT" | "NONE";
+  status: "EXACT" | "READY" | "FEE_HIGH" | "SHORT" | "EMPTY";
+  /** จำนวนชุดที่ยอดตรงพอดี — มากกว่าหนึ่งแปลว่าตัวเลขตัดสินให้ไม่ได้ */
+  exactCount: number;
+  ambiguous: boolean;
+  /** ใบที่ถูกเลือกแต่วันโอนไม่เข้ารอบปกติของเจ้านี้ */
+  outOfWindowCount: number;
+  lagDays: number[];
   candidates: SettlementCandidate[];
   selectedIds: string[];
 };
