@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "lint": "eslint . --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern .next",
+    "schema": "node scripts/dump-schema.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-thai": "^5.3.0",
