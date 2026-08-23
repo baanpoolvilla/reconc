@@ -30,6 +30,18 @@ export function Home() {
   const total = summary.inScopeReceipts;
   const staleCount = summary.staleDecisions ?? 0;
 
+  // บัญชีที่มี statement อยู่ในระบบแล้ว แต่ยังไม่มีใครบอกว่าตรงกับช่องทางรับเงินไหน
+  //
+  // นี่คือความเงียบที่แพงที่สุดของระบบ: ทุกอย่างดูปกติ เอกสารขึ้นครบ แต่รายการที่
+  // รับเงินผ่านช่องทางนั้นไม่เคยถูกนำมาเทียบกับ statement เลยสักใบ ตัวหารของ
+  // แถบความคืบหน้าจึงเหลือไม่กี่ใบ แล้วหน้าจอก็ประกาศว่าเคลียร์ครบ 100%
+  // ทั้งที่ยังไม่ได้เริ่มทำงาน
+  const unmapped = effective.unmappedAccounts;
+  // รายการที่ไม่มีบัญชีธนาคารให้กระทบเลย — รวมทั้งเงินที่ OTA เก็บแทนเรา ซึ่งเป็น
+  // เรื่องปกติ และช่องทางที่ยังไม่ได้ผูก ซึ่งไม่ปกติ
+  const noAccount = outOfScope.filter((item) => item.reason === "NO_BANK_ACCOUNT");
+  const outsideCount = noAccount.reduce((sum, item) => sum + item.count, 0) + waitingCount;
+
   if (!hasData) {
     return (
       <>
@@ -54,7 +66,20 @@ export function Home() {
         action={<Pill tone={online ? "green" : "amber"}>{online ? "ออนไลน์ · ทุกเครื่องเห็นตรงกัน" : "เก็บในเครื่องนี้เท่านั้น"}</Pill>}
       />
 
-      <Progress done={done} total={total} label="รายการที่กระทบยอดแล้ว" />
+      <Progress done={done} total={total} label="รายการที่กระทบยอดแล้ว" outside={outsideCount} />
+
+      {/* ผูกบัญชีไม่ครบ = รายการของช่องทางนั้นไม่เคยถูกนำมาเทียบเลย ต้องขึ้นก่อน
+          ทุกอย่าง เพราะตัวเลขที่เหลือบนหน้านี้นับจากของที่เข้ามาแล้วเท่านั้น */}
+      {unmapped.length > 0 && (
+        <Banner
+          tone="red"
+          title={`บัญชี ${unmapped.map((item) => item.code).join(" และ ")} ยังไม่ได้ผูกกับช่องทางรับเงิน`}
+          action={<button className="small-primary" onClick={() => go("settings")}>ไปผูกบัญชี</button>}
+        >
+          Statement ของบัญชีนี้อยู่ในระบบแล้ว แต่ระบบยังไม่รู้ว่าตรงกับช่องทางรับเงินไหนในรายงานการรับเงิน
+          จนกว่าจะผูก รายการที่รับเงินผ่านช่องทางนั้นจะ<b>ไม่ถูกนำมากระทบยอดเลย</b> และตัวเลขทั้งหน้านี้จะนับเฉพาะส่วนที่เหลือ
+        </Banner>
+      )}
 
       {/* ยังไม่มี statement = ยังไม่มีอะไรให้กระทบ ไม่ใช่กระทบเสร็จแล้ว
           ความต่างนี้สำคัญพอที่จะขึ้นก่อนกล่องงานทุกใบ */}

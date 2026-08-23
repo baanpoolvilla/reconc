@@ -269,3 +269,22 @@ test("a document imported by mistake can be deleted, and says what goes with it"
   assert.match(view, /การจับคู่ที่คุณยืนยันเองไม่ถูกลบ/);
   assert.match(view, /ใบเสร็จรับเงินที่ออกไปแล้วไม่หาย/);
 });
+
+test("the home screen cannot claim a period is clear while rows never entered it", async () => {
+  const home = await read("../app/views-home.tsx");
+  const ui = await read("../app/ui.tsx");
+
+  // อาการจริงที่เจอบนระบบที่ deploy แล้ว: statement อยู่ในระบบ เอกสารขึ้นครบ แต่
+  // ไม่มีใครบอกว่าบัญชีตรงกับช่องทางรับเงินไหน รายการทั้งเดือนจึงไม่เคยถูกนำมา
+  // เทียบเลย ตัวหารเหลือใบเดียว แล้วหน้าแรกประกาศว่า "100% ของรอบนี้เคลียร์แล้ว"
+  assert.match(home, /unmappedAccounts/);
+  assert.match(home, /ยังไม่ได้ผูกกับช่องทางรับเงิน/);
+  assert.match(home, /ไปผูกบัญชี/);
+
+  // แถบความคืบหน้าต้องบอกจำนวนที่อยู่นอกตัวหารด้วย ไม่ใช่รายงานแค่เปอร์เซ็นต์
+  assert.match(home, /outside=\{outsideCount\}/);
+  assert.match(ui, /outside\?: number/);
+  assert.match(ui, /ยังไม่เข้าสู่การกระทบยอด/);
+  // และห้ามพูดว่า "เคลียร์แล้ว" ลอย ๆ โดยไม่บอกว่าเทียบกับอะไร
+  assert.doesNotMatch(ui, /% ของรอบนี้เคลียร์แล้ว/);
+});

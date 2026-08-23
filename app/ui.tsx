@@ -90,13 +90,29 @@ export function Switch({ checked, onChange, label, disabled }: {
 }
 
 /** แถบความคืบหน้าของรอบบัญชี — ตัวเลขเดียวที่บอกว่าเหลืออีกเท่าไหร่ */
-export function Progress({ done, total, label }: { done: number; total: number; label: string }) {
+/**
+ * ความคืบหน้าของรอบ
+ *
+ * `outside` คือรายการที่ยังไม่เข้าสู่การกระทบยอดเลย ซึ่งไม่ได้อยู่ในตัวหาร —
+ * ไม่บอกไว้ตรงนี้ หน้าจอจะประกาศว่า "100% เคลียร์แล้ว" ได้ทั้งที่รายการเกือบ
+ * ทั้งเดือนยังไม่ถูกแตะ เพราะตัวหารเหลืออยู่ใบเดียว
+ */
+export function Progress({ done, total, label, outside = 0 }: {
+  done: number; total: number; label: string; outside?: number;
+}) {
   const percent = total ? Math.round((done / total) * 100) : 0;
   return (
     <div className="progress-block">
       <div className="progress-head"><b>{label}</b><span>{done.toLocaleString("en-US")} / {total.toLocaleString("en-US")}</span></div>
       <div className="progress-track"><i style={{ width: `${Math.max(percent, total ? 2 : 0)}%` }} /></div>
-      <small>{percent}% ของรอบนี้เคลียร์แล้ว</small>
+      <small>
+        {total === 0
+          ? "ยังไม่มีรายการไหนเข้าสู่การกระทบยอด"
+          : `${percent}% ของรายการที่เข้าสู่การกระทบยอดแล้ว`}
+        {outside > 0 && (
+          <b className="progress-outside"> · อีก {outside.toLocaleString("en-US")} รายการยังไม่เข้าสู่การกระทบยอด</b>
+        )}
+      </small>
     </div>
   );
 }
