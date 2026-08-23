@@ -60,8 +60,8 @@ test("the schema applies cleanly to an empty Postgres database", async () => {
 
   assert.deepEqual(tables.map((row) => row.table_name), [
     "app_settings", "audit_events", "bank_statements", "bank_transactions", "bookings",
-    "document_files", "documents", "match_decisions", "receipts", "reconciliation_runs",
-    "schema_migrations",
+    "document_files", "documents", "issued_receipts", "match_decisions", "receipts",
+    "reconciliation_runs", "schema_migrations",
   ]);
 });
 
@@ -114,7 +114,7 @@ test("carries its schema in the bundle instead of reading a file at runtime", as
 
   assert.doesNotMatch(client, /node:fs|readFileSync|fileURLToPath|import\.meta\.url/);
   assert.match(schemaSql(), /CREATE SCHEMA IF NOT EXISTS clearclose/);
-  assert.equal(schemaSql().match(/CREATE TABLE/g).length, 10);
+  assert.equal(schemaSql().match(/CREATE TABLE/g).length, 11);
 });
 
 test("shares a database safely with tables of the same name", async () => {

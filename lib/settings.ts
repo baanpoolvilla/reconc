@@ -30,6 +30,9 @@ export type SettlementProvider = {
   /** ช่องทางรับเงินฝั่งสมุดบัญชีของเจ้านี้ */
   methods: string[];
   anchor: SettlementAnchor | string;
+  /** ชื่อผู้จ่ายที่พิมพ์ลงใบเสร็จรับเงิน ว่างคือใช้ label */
+  payerName: string;
+  taxId: string;
   minLagDays: number;
   maxLagDays: number;
   /** รอบโอนปกติ [ต่ำสุด, สูงสุด] ใช้จัดลำดับข้อเสนอ ไม่ได้ใช้ตัดคำจองทิ้ง */
@@ -85,7 +88,18 @@ export type AppSettings = {
   matching: MatchOptions;
   settlement: SettlementSettings;
   accounts: BankAccount[];
+  /** ผู้ออกใบเสร็จรับเงิน — ไม่มีอยู่ในเอกสารบัญชีใดเลย จึงมาจากการตั้งค่าเท่านั้น */
+  organization: Organization;
   display: { ledgerRowLimit: number; showExcludedRows: boolean };
+};
+
+export type Organization = {
+  name: string;
+  /** เลขประจำตัวผู้เสียภาษี 13 หลัก เก็บเฉพาะตัวเลข */
+  taxId: string;
+  branch: string;
+  address: string;
+  phone: string;
 };
 
 export type DecisionKind = "MANUAL" | "SETTLEMENT";

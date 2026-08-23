@@ -478,6 +478,7 @@ const SECTIONS = [
   { id: "exclusions", label: "รายการที่ไม่นับ" },
   { id: "accounts", label: "บัญชีธนาคาร" },
   { id: "ota", label: "ก้อนโอน OTA" },
+  { id: "organization", label: "ผู้ออกใบเสร็จ" },
   { id: "matching", label: "วิธีจับคู่" },
   { id: "system", label: "ข้อมูลและระบบ" },
 ];
@@ -648,6 +649,52 @@ export function Settings() {
             hint="เฉพาะรายการที่รับเงินผ่านช่องทางเหล่านี้เท่านั้นที่จะถูกเสนอเข้าก้อน"
             values={settings.settlement.otaMethods}
             onChange={(otaMethods) => patchSettlement({ otaMethods })}
+            disabled={busy}
+          />
+        </section>
+      )}
+
+      {section === "organization" && (
+        <section className="panel">
+          <PanelTitle title="ผู้ออกใบเสร็จรับเงิน" />
+          <p className="settings-lead">
+            ข้อมูลชุดนี้ไม่มีอยู่ในเอกสารบัญชีฉบับไหนเลย ระบบจึงไม่รู้จักกิจการของใครล่วงหน้า
+            และไม่เดาให้ — กรอกให้ครบก่อนถึงจะออกใบเสร็จได้ ใบที่ออกไปแล้วเก็บข้อมูลชุดนี้ไว้เป็นสำเนา
+            แก้ตรงนี้ทีหลังจึงมีผลกับใบที่ออกใหม่เท่านั้น
+          </p>
+          <TextField
+            label="ชื่อผู้ออกใบเสร็จ"
+            hint="ชื่อนิติบุคคลตามที่จดทะเบียน"
+            value={settings.organization.name}
+            onChange={(name) => patch({ organization: { ...settings.organization, name } })}
+            disabled={busy}
+          />
+          <TextField
+            label="เลขประจำตัวผู้เสียภาษี"
+            hint="13 หลัก ใส่แต่ตัวเลขก็ได้"
+            value={settings.organization.taxId}
+            onChange={(taxId) => patch({ organization: { ...settings.organization, taxId } })}
+            disabled={busy}
+          />
+          <TextField
+            label="สำนักงาน"
+            hint="เช่น สำนักงานใหญ่ หรือชื่อสาขา"
+            value={settings.organization.branch}
+            onChange={(branch) => patch({ organization: { ...settings.organization, branch } })}
+            disabled={busy}
+          />
+          <TextField
+            label="ที่อยู่"
+            hint="ที่อยู่ที่จะพิมพ์บนหัวใบเสร็จ"
+            value={settings.organization.address}
+            onChange={(address) => patch({ organization: { ...settings.organization, address } })}
+            disabled={busy}
+          />
+          <TextField
+            label="โทรศัพท์"
+            hint="ไม่บังคับ"
+            value={settings.organization.phone}
+            onChange={(phone) => patch({ organization: { ...settings.organization, phone } })}
             disabled={busy}
           />
         </section>
@@ -935,6 +982,17 @@ function BahtField({ label, satang, disabled, onCommit }: {
  * ข้อความบน statement ที่บอกว่าก้อนเป็นของใคร, ช่องทางรับเงินฝั่งสมุดบัญชีของเจ้านั้น,
  * และวันที่เจ้านั้นใช้ตั้งรอบโอน ที่เหลือเป็นแค่ตัวเลขช่วงวัน
  */
+function TextField({ label, hint, value, onChange, disabled }: {
+  label: string; hint: string; value: string; onChange: (next: string) => void; disabled: boolean;
+}) {
+  return (
+    <label className="settings-field text-field">
+      <span><b>{label}</b><small>{hint}</small></span>
+      <input value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
 function ProviderEditor({ providers, onChange, disabled }: {
   providers: SettlementProvider[]; onChange: (next: SettlementProvider[]) => void; disabled: boolean;
 }) {
@@ -1008,6 +1066,13 @@ function ProviderEditor({ providers, onChange, disabled }: {
             hint="เฉพาะรายการที่รับเงินผ่านช่องทางเหล่านี้เท่านั้นที่จะถูกเสนอเข้าก้อนของเจ้านี้"
             values={provider.methods}
             onChange={(methods) => patchAt(index, { methods })}
+            disabled={disabled}
+          />
+          <TextField
+            label="ชื่อผู้จ่ายบนใบเสร็จ"
+            hint={`ชื่อนิติบุคคลที่จะพิมพ์ลงใบเสร็จ · เว้นว่างคือใช้ "${provider.label}" · ไม่มีผลกับการจับคู่`}
+            value={provider.payerName}
+            onChange={(payerName) => patchAt(index, { payerName })}
             disabled={disabled}
           />
         </div>

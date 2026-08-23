@@ -13,7 +13,7 @@ import type { AppSettings, EffectiveDataset, MatchDecision } from "../lib/settin
 
 export type Tone = "green" | "blue" | "amber" | "red" | "slate";
 
-export type ViewId = "home" | "fix" | "ota" | "browse" | "report" | "upload" | "settings";
+export type ViewId = "home" | "fix" | "ota" | "receipts" | "browse" | "report" | "upload" | "settings";
 
 export type WorkspaceValue = {
   /** เอกสารต้นทางดิบ ก่อนใช้ตัวกรองใด ๆ */

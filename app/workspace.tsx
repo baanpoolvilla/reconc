@@ -5,6 +5,7 @@ import { WorkspaceContext, type Tone, type ViewId, type WorkspaceValue } from ".
 import { Home, Report } from "./views-home";
 import { FixQueue, Settlements } from "./views-match";
 import { Browse, Settings, Upload } from "./views-data";
+import { Receipts } from "./views-receipts";
 import { type Dataset, thaiMonthLabel } from "../lib/dataset";
 import {
   type AppSettings,
@@ -26,7 +27,7 @@ import {
 
 // เปลือกของแอป
 //
-// เมนูมีหกอัน เรียงตามลำดับที่คนทำงานจริง ๆ ใช้: ดูว่าต้องทำอะไร → ทำ → ตรวจ →
+// เมนูเรียงตามลำดับที่คนทำงานจริง ๆ ใช้: ดูว่าต้องทำอะไร → ทำ → ออกเอกสาร → ตรวจ →
 // ใส่เอกสารรอบใหม่ ทุกหน้าจออ่านชุดข้อมูลเดียวกันที่คำนวณใหม่ทุกครั้งที่มีการ
 // เปลี่ยนแปลง จึงไม่มีทางเห็นตัวเลขคนละชุดกันระหว่างหน้า
 
@@ -34,6 +35,7 @@ const NAV: { id: ViewId; label: string; icon: string }[] = [
   { id: "home", label: "หน้าแรก", icon: "⌂" },
   { id: "fix", label: "ยอดที่ไม่ตรง", icon: "≠" },
   { id: "ota", label: "ก้อนโอน OTA", icon: "⊞" },
+  { id: "receipts", label: "ใบเสร็จรับเงิน", icon: "▧" },
   { id: "browse", label: "ค้นหารายการ", icon: "⌕" },
   { id: "report", label: "รายงาน", icon: "▤" },
   { id: "upload", label: "นำเข้าเอกสาร", icon: "↑" },
@@ -247,6 +249,7 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
             {active === "home" && <Home />}
             {active === "fix" && (hasData ? <FixQueue /> : <Home />)}
             {active === "ota" && (hasData ? <Settlements /> : <Home />)}
+            {active === "receipts" && (hasData ? <Receipts /> : <Home />)}
             {active === "browse" && (hasData ? <Browse /> : <Home />)}
             {active === "report" && (hasData ? <Report /> : <Home />)}
             {active === "upload" && <Upload />}

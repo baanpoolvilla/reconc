@@ -204,3 +204,28 @@ test("keeps product metadata and starter cleanup intact", async () => {
   await access(new URL("../public/og.png", import.meta.url));
 });
 
+test("the receipt screen prints the frozen copy, not today's numbers", async () => {
+  const view = await read("../app/views-receipts.tsx");
+
+  // ทุกตัวเลขบนใบมาจากสำเนาที่แช่แข็งไว้ตอนออกใบ ไม่ใช่คำนวณใหม่จากข้อมูลปัจจุบัน
+  assert.match(view, /receipt\.document/);
+  assert.match(view, /document\.netSatang/);
+  assert.match(view, /document\.grossSatang/);
+  // ไฟล์ PDF ออกทางหน้าพิมพ์ของเบราว์เซอร์ ซึ่งฝังฟอนต์ไทยให้ถูกต้อง
+  assert.match(view, /window\.print\(\)/);
+  assert.match(view, /no-print/);
+  // ยกเลิกได้ แต่ต้องมีเหตุผลกำกับเสมอ
+  assert.match(view, /เหตุผลที่ยกเลิก/);
+  // เลขที่เอกสารต้องเดินจากที่เดียว หน้าจอจึงต้องปฏิเสธโหมดเก็บในเครื่อง
+  assert.match(view, /if \(!online\)/);
+});
+
+test("the receipt sheet keeps its own print rules", async () => {
+  const css = await read("../app/globals.css");
+
+  assert.match(css, /@media print/);
+  // เมนู ปุ่ม และแถบบนไม่ใช่ส่วนหนึ่งของเอกสารที่ส่งให้คนนอก
+  assert.match(css, /\.no-print[^{]*\{[^}]*display: none/);
+  assert.match(css, /\.receipt-sheet/);
+  assert.match(css, /@page \{ size: A4/);
+});

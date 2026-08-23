@@ -116,6 +116,7 @@ main { grid-column: 2; min-width: 0; }
 .panel-title > span > small { display: block; margin-bottom: 4px; color: var(--blue); font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
 .panel-title h2 { font: 620 19px/1.3 var(--serif); }
 .panel-note { color: var(--muted); font-size: 12px; }
+.text-field input { flex: 1 1 260px; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
 .settings-lead { margin: -4px 22px 6px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .table-note { margin: 0; padding: 6px 22px 16px; color: var(--muted); font-size: 12px; }
 .is-disabled { opacity: .5; }
@@ -227,6 +228,61 @@ code { padding: 2px 6px; border-radius: 6px; background: rgba(20,69,58,.08); fon
 .provider-card { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
 .provider-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .provider-head b { font-size: 14px; }
+
+/* ── ใบเสร็จรับเงิน ─────────────────────────────────────────────────────────
+   เอกสารบนจอกับเอกสารบนกระดาษเป็นอันเดียวกัน หน้าจอที่พิมพ์ออกมาแล้วหน้าตา
+   ไม่เหมือนที่เห็น คือเอกสารที่ไม่มีใครกล้าส่งออกไป */
+.receipt-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.receipt-toolbar > div { display: flex; gap: 8px; }
+.receipt-void { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #f0cfcf; border-radius: 11px; background: #fdf4f4; }
+.receipt-void p { flex: 1 1 260px; margin: 0; font-size: 12.5px; color: var(--muted); }
+.receipt-void input { flex: 1 1 220px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+
+tr.muted-row { color: var(--faint); }
+tr.muted-row .mono { text-decoration: line-through; }
+
+.receipt-sheet { position: relative; max-width: 780px; margin: 0 auto; padding: 34px 38px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.receipt-sheet.voided { opacity: 0.72; }
+.receipt-stamp { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%) rotate(-16deg); padding: 6px 26px; border: 4px solid #c0392b; border-radius: 10px; color: #c0392b; font: 700 40px/1 var(--serif); letter-spacing: 6px; opacity: 0.5; pointer-events: none; }
+
+.receipt-top { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 2px solid #222; }
+.receipt-top b { font: 650 18px var(--serif); }
+.receipt-top p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.receipt-address { white-space: pre-line; }
+.receipt-title { text-align: right; white-space: nowrap; }
+.receipt-title h2 { margin: 0 0 6px; font: 650 24px var(--serif); }
+
+.receipt-payer { display: flex; flex-wrap: wrap; gap: 22px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.receipt-payer span { display: flex; flex-direction: column; gap: 3px; }
+.receipt-payer small { color: var(--muted); font-size: 11px; }
+.receipt-payer b { font-size: 13.5px; }
+
+.receipt-table { width: 100%; min-width: 0; margin-top: 16px; border-collapse: collapse; font-size: 12.5px; }
+.receipt-table th { position: static; background: transparent; text-transform: none; letter-spacing: 0; box-shadow: none; }
+.receipt-table tbody tr:hover { background: transparent; }
+.receipt-table th, .receipt-table td { padding: 8px 6px; text-align: left; vertical-align: top; }
+.receipt-table thead th { border-bottom: 1px solid #222; font-size: 11.5px; color: var(--muted); }
+.receipt-table tbody td { border-bottom: 1px solid var(--line); }
+.receipt-table .num { text-align: right; white-space: nowrap; }
+.receipt-table tfoot td { padding-top: 8px; text-align: right; }
+.receipt-table tfoot td:last-child { min-width: 130px; }
+.receipt-total td { padding-top: 12px; border-top: 2px solid #222; font: 650 16px var(--serif); }
+.receipt-note { margin-top: 14px; font-size: 12px; color: var(--muted); }
+
+.receipt-foot { display: flex; justify-content: space-between; gap: 30px; margin-top: 34px; font-size: 11.5px; color: var(--muted); }
+.receipt-foot p { margin: 2px 0 0; }
+.receipt-sign { align-self: flex-end; text-align: center; }
+.receipt-sign span { display: block; width: 190px; border-bottom: 1px solid #222; }
+.receipt-sign small { display: block; margin-top: 6px; }
+
+@media print {
+  /* เหลือแต่ตัวเอกสารบนกระดาษ ปุ่มกับเมนูไม่ใช่ส่วนหนึ่งของใบเสร็จ */
+  .side, .topbar, footer, .toast, .no-print, .page-heading, .banner { display: none !important; }
+  .app, main, .content { display: block; margin: 0; padding: 0; background: #fff; }
+  .receipt-sheet { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; }
+  .receipt-stamp { opacity: 0.6; }
+  @page { size: A4; margin: 16mm; }
+}
 
 .basket { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
 .basket-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 16px; border-bottom: 1px solid var(--line); }
