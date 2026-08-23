@@ -5,7 +5,7 @@
 // There is no demo, seeded, bundled or hand-written data anywhere in the app.
 
 /** MANUAL และ OTA คือกลุ่มที่คนกดยืนยันเอง ไม่ใช่กฎอัตโนมัติ */
-export type MatchType = "1:1" | "N:1" | "1:N" | "1:1+DEPOSIT" | "MANUAL" | "OTA";
+export type MatchType = "1:1" | "N:1" | "1:N" | "1:1+CHECKIN" | "1:1+DEPOSIT" | "MANUAL" | "OTA";
 export type Severity = "high" | "medium" | "low";
 
 export type Booking = {

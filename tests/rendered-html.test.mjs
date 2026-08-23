@@ -288,3 +288,17 @@ test("the home screen cannot claim a period is clear while rows never entered it
   // และห้ามพูดว่า "เคลียร์แล้ว" ลอย ๆ โดยไม่บอกว่าเทียบกับอะไร
   assert.doesNotMatch(ui, /% ของรอบนี้เคลียร์แล้ว/);
 });
+
+test("the fix queue shows every instalment of the same reservation", async () => {
+  const match = await read("../app/views-match.tsx");
+  const css = await read("../app/globals.css");
+
+  // ยอดลอย ๆ ใบเดียวอธิบายตัวเองไม่ได้ — "มัดจำวันจอง + ที่เหลือวัน Check-in =
+  // ยอดคำจองพอดี" คือหลักฐานที่ผู้ตรวจกดยืนยันได้ทันที และมันผูกกันด้วยเลขที่การจอง
+  assert.match(match, /BookingInstalments/);
+  assert.match(match, /reservationNo === reservationNo|item\.reservationNo === reservationNo/);
+  assert.match(match, /ยอดคำจอง/);
+  assert.match(match, /วัน Check-in/);
+  assert.match(match, /วันที่จอง/);
+  assert.match(css, /\.instalments/);
+});

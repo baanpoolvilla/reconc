@@ -235,11 +235,12 @@ export function Report() {
   const { accounts, summary, groups, outOfScope } = dataset.reconciliation;
   const [account, setAccount] = useState("all");
 
-  const byType = (["1:1", "N:1", "1:N", "1:1+DEPOSIT", "MANUAL", "OTA"] as const).map((type) => ({
+  const byType = (["1:1", "1:1+CHECKIN", "N:1", "1:N", "1:1+DEPOSIT", "MANUAL", "OTA"] as const).map((type) => ({
     type,
     label: {
       "1:1": "ระบบจับ 1 ต่อ 1", "N:1": "ระบบจับ หลายต่อ 1", "1:N": "ระบบจับ 1 ต่อหลาย",
-      "1:1+DEPOSIT": "ตรง พร้อมค่าประกัน", MANUAL: "คนยืนยันเอง", OTA: "แตกยอด OTA",
+      "1:1+CHECKIN": "งวดที่เหลือ วัน Check-in", "1:1+DEPOSIT": "ตรง พร้อมค่าประกัน",
+      MANUAL: "คนยืนยันเอง", OTA: "แตกยอด OTA",
     }[type],
     groups: groups.filter((group) => group.type === type),
   })).filter((row) => row.groups.length);
@@ -391,7 +392,8 @@ export function Report() {
                     <Pill tone={group.decision ? "amber" : "green"}>
                       {group.decision
                         ? (group.type === "OTA" ? "แตกยอด OTA" : "คนยืนยัน")
-                        : group.type === "1:1+DEPOSIT" ? "ตรง พร้อมค่าประกัน" : group.type}
+                        : group.type === "1:1+DEPOSIT" ? "ตรง พร้อมค่าประกัน"
+                        : group.type === "1:1+CHECKIN" ? "งวดที่เหลือ วัน Check-in" : group.type}
                     </Pill>
                     {group.decision?.reasonLabel && <small className="block">{group.decision.reasonLabel}</small>}
                   </td>
