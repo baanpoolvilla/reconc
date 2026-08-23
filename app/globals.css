@@ -134,6 +134,39 @@ code { padding: 2px 6px; border-radius: 6px; background: rgba(20,69,58,.08); fon
 .progress-outside { color: var(--red); font-weight: 700; }
 .heading-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* ── รายละเอียดของกลุ่มที่กระทบยอดแล้ว ──────────────────────────────────────
+   กดแถวแล้วกางเอกสารทั้งสามฝั่งออกมา — รายงานการรับเงิน บัญชีแยกประเภท
+   และ statement ธนาคาร วางเรียงกันให้เทียบได้ในสายตาเดียว */
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: #f5f7f4; }
+tr.opened { background: #f2f6f3; }
+tr.opened td { border-bottom: 0; }
+.open-hint { color: var(--blue) !important; font-weight: 700; }
+tr.detail-row td { padding: 0; background: #f8faf8; border-top: 0; }
+tr.detail-row:hover { background: #f8faf8; }
+
+.group-detail { padding: 4px 16px 20px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.detail-grid h4 { margin: 0 0 8px; color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.detail-card { margin: 0 0 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); }
+.detail-card > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-top: 1px solid var(--line-soft); }
+.detail-card > div:first-child { border-top: 0; }
+.detail-card dt { flex: 0 0 auto; color: var(--muted); font-size: 11.5px; }
+.detail-card dd { margin: 0; text-align: right; font-size: 12.5px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.detail-card dd.wrap { text-align: left; font-weight: 400; }
+.detail-source { margin: 0; color: var(--faint); font-size: 11px; }
+
+.detail-proof { margin-top: 14px; padding: 13px 15px; border: 1px solid #cfe3d8; border-radius: 11px; background: #f4f8f6; }
+.detail-proof h4 { margin: 0 0 8px; color: var(--forest-2); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.detail-proof ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.detail-proof li { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.detail-proof li .mono { flex: 0 0 34px; color: var(--muted); font-size: 11px; }
+.detail-proof li b { flex: 1; font-weight: 600; }
+.detail-proof li em { font-style: normal; font-variant-numeric: tabular-nums; }
+.detail-proof li.ok em { color: var(--green); font-weight: 700; }
+.detail-proof li.bad em { color: var(--red); font-weight: 700; }
+.detail-decision { margin: 10px 0 0; padding-top: 9px; border-top: 1px solid #cfe3d8; color: var(--muted); font-size: 12px; }
+
 /* ── พักเงินเข้าไว้ ────────────────────────────────────────────────────────── */
 .hold-box { margin-top: 14px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 12px; background: #fbfcfe; }
 .hold-why { margin: 0 0 12px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }

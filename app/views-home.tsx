@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, Step, StepList, type StepState, useWorkspace } from "./ui";
-import { baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
+import { type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
 import { ALL_PERIODS, DECISION_REASONS, type DecisionReason } from "../lib/settings";
 
 // หน้าแรก — กล่องงาน
@@ -218,6 +218,112 @@ export function Home() {
   );
 }
 
+/**
+ * รายละเอียดของกลุ่มที่กระทบยอดแล้ว — เอกสารทั้งสามฝั่งวางเรียงกัน
+ *
+ * ตารางรายงานตอบได้แค่ว่า "จับคู่แล้ว ยอดเท่านี้" ซึ่งพอสำหรับดูภาพรวม แต่ไม่พอ
+ * ตอนมีคนถามว่า "ก้อนนี้คือคำจองไหน จองวันไหน เข้าพักวันไหน แล้วเงินเข้ามาบรรทัด
+ * ไหนของ statement" — คำถามที่แผนกบัญชีถามจริงทุกครั้งที่ต้องยืนยันตัวเลข
+ *
+ * สิ่งที่แสดงคือสิ่งที่กลุ่มเก็บไว้ตอนกระทบยอด ไม่ได้ไปอ่านข้อมูลปัจจุบันมาใหม่
+ * รายละเอียดที่เห็นจึงเป็นของรอบที่จับคู่จริง ไม่ใช่ของวันที่เปิดดู
+ */
+function GroupDetail({ group }: { group: MatchGroup }) {
+  return (
+    <div className="group-detail">
+      <div className="detail-grid">
+        <section>
+          <h4>จากรายงานการรับเงิน</h4>
+          {group.receipts.map((row) => (
+            <dl key={row.id} className="detail-card">
+              <div><dt>เลขที่การจอง</dt><dd className="mono">{row.reservationNo || "—"}</dd></div>
+              <div><dt>ผู้เข้าพัก</dt><dd>{row.guest || "—"}</dd></div>
+              <div><dt>วันที่รับเงิน</dt><dd>{thaiDate(row.receiptDate)}</dd></div>
+              <div><dt>ช่องทางรับเงิน</dt><dd>{row.method || "—"}</dd></div>
+              <div><dt>ยอดที่รับมา</dt><dd className="num">{baht(row.amountSatang)}</dd></div>
+              <div><dt>ห้อง</dt><dd>{[row.roomNumber, row.roomType].filter(Boolean).join(" · ") || "—"}</dd></div>
+              <div><dt>ช่องทางการจอง</dt><dd>{row.channel || "—"}</dd></div>
+              <div><dt>แถวในไฟล์</dt><dd className="mono">{row.sourceRow || "—"}</dd></div>
+            </dl>
+          ))}
+        </section>
+
+        <section>
+          <h4>จากบัญชีแยกประเภท</h4>
+          {group.receipts.map((row) => (
+            <dl key={row.id} className="detail-card">
+              <div><dt>วันที่สร้างคำจอง</dt><dd>{row.bookingCreatedDate ? thaiDateTime(row.bookingCreatedAt || row.bookingCreatedDate) : "ไม่พบคำจอง"}</dd></div>
+              <div><dt>วัน Check-in</dt><dd>{row.checkIn ? thaiDate(row.checkIn) : "—"}</dd></div>
+              <div><dt>วัน Check-out</dt><dd>{row.checkOut ? thaiDate(row.checkOut) : "—"}</dd></div>
+              <div><dt>จำนวนคืน</dt><dd>{row.bookingNights || "—"}</dd></div>
+              <div><dt>สถานะคำจอง</dt><dd>{row.bookingStatus || "—"}</dd></div>
+              <div><dt>ยอดรวมคำจอง</dt><dd className="num">{baht(row.bookingTotalSatang)}</dd></div>
+              <div><dt>จ่ายมาแล้ว</dt><dd className="num">{baht(row.bookingPaidSatang)}</dd></div>
+              <div>
+                <dt>ค้างชำระ</dt>
+                <dd className={`num ${row.bookingBalanceDueSatang ? "negative" : "zero-delta"}`}>
+                  {baht(row.bookingBalanceDueSatang)}
+                </dd>
+              </div>
+            </dl>
+          ))}
+        </section>
+
+        <section>
+          <h4>จาก Statement ธนาคาร</h4>
+          {group.lines.map((line) => (
+            <dl key={line.id} className="detail-card">
+              <div><dt>บัญชี</dt><dd>•••{group.account} · <span className="mono">{group.accountNo}</span></dd></div>
+              <div><dt>วันที่เงินเข้า</dt><dd>{thaiDate(line.date)} {line.time} น.</dd></div>
+              <div><dt>รายการ</dt><dd>{line.description || "—"}</dd></div>
+              <div><dt>ช่องทาง</dt><dd>{line.channel || "—"}</dd></div>
+              <div><dt>รายละเอียด</dt><dd className="wrap">{line.detail || "—"}</dd></div>
+              <div><dt>ยอดเงินเข้า</dt><dd className="num">{baht(line.amountSatang)}</dd></div>
+              <div>
+                <dt>ยอดคงเหลือ</dt>
+                <dd className="num">{baht(line.balanceBeforeSatang)} → {baht(line.balanceSatang)}</dd>
+              </div>
+              <div><dt>อยู่ที่</dt><dd className="mono">หน้า {line.page} บรรทัด {line.row}</dd></div>
+            </dl>
+          ))}
+          {group.statementSource && <p className="detail-source">ไฟล์ต้นฉบับ: {group.statementSource}</p>}
+        </section>
+      </div>
+
+      <div className="detail-proof">
+        <h4>ทำไมระบบถึงจับคู่ให้</h4>
+        <ul>
+          {group.rulesPassed.map((rule) => (
+            <li key={rule.id} className={rule.passed ? "ok" : "bad"}>
+              <span className="mono">{rule.id}</span>
+              <b>{rule.label}</b>
+              <em>
+                {typeof rule.left === "number" ? baht(rule.left) : rule.left || "—"}
+                {" = "}
+                {typeof rule.right === "number" ? baht(rule.right) : rule.right || "—"}
+              </em>
+            </li>
+          ))}
+        </ul>
+        {group.decision && (
+          <p className="detail-decision">
+            คนยืนยันเอง — {group.decision.reasonLabel}
+            {group.decision.note && ` · ${group.decision.note}`}
+            {group.decision.decidedAt && ` · เมื่อ ${thaiDateTime(group.decision.decidedAt)}`}
+            {group.deltaSatang !== 0 && ` · ผลต่างที่รับไว้ ${baht(group.deltaSatang)}`}
+          </p>
+        )}
+        {group.crossPeriod && (
+          <p className="detail-decision">
+            เหลื่อมเดือน — เงินเข้าบัญชีงวด {thaiMonthLabel(group.period)} แต่บันทึกรับเงินไว้งวด{" "}
+            {group.sourcePeriods.map(thaiMonthLabel).join(", ")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** สิ่งที่คนกดยืนยันเอง แยกให้เห็นชัดว่าอันไหนระบบจับ อันไหนคนตัดสิน */
 function ConfirmedList() {
   const { dataset, decisions, undoMatch, busy } = useWorkspace();
@@ -287,6 +393,8 @@ export function Report() {
   const { dataset, effective } = useWorkspace();
   const { accounts, summary, groups, outOfScope } = dataset.reconciliation;
   const [account, setAccount] = useState("all");
+  // แถวที่กางรายละเอียดอยู่ — ทีละแถว เพราะรายละเอียดยาวพอที่จะกลบตารางถ้ากางหลายแถว
+  const [openGroup, setOpenGroup] = useState("");
 
   const byType = (["1:1", "1:1+CHECKIN", "N:1", "1:N", "1:1+DEPOSIT", "MANUAL", "OTA"] as const).map((type) => ({
     type,
@@ -473,8 +581,15 @@ export function Report() {
             </thead>
             <tbody>
               {visible.slice(0, 300).map((group) => (
-                <tr key={group.id}>
-                  <td><b>{thaiDate(group.date)}</b><small className="block mono">{group.id}</small></td>
+                <Fragment key={group.id}>
+                <tr
+                  className={`clickable ${openGroup === group.id ? "opened" : ""}`}
+                  onClick={() => setOpenGroup(openGroup === group.id ? "" : group.id)}
+                >
+                  <td>
+                    <b>{thaiDate(group.date)}</b>
+                    <small className="block mono">{group.id}</small>
+                  </td>
                   <td>
                     <b>{group.receipts.map((row) => row.guest || row.reservationNo).slice(0, 2).join(", ")}</b>
                     {group.receipts.length > 2 && <small className="block">และอีก {group.receipts.length - 2} รายการ</small>}
@@ -500,8 +615,15 @@ export function Report() {
                         : group.type === "1:1+CHECKIN" ? "งวดที่เหลือ วัน Check-in" : group.type}
                     </Pill>
                     {group.decision?.reasonLabel && <small className="block">{group.decision.reasonLabel}</small>}
+                    <small className="block open-hint">{openGroup === group.id ? "▾ ปิด" : "▸ ดูรายละเอียด"}</small>
                   </td>
                 </tr>
+                {openGroup === group.id && (
+                  <tr className="detail-row">
+                    <td colSpan={6}><GroupDetail group={group} /></td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

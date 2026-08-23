@@ -486,3 +486,33 @@ test("an OTA batch says when its bookings were filtered out by settings", async 
   // เตือนเฉพาะก้อนที่ยังไม่ลงตัว — ก้อนที่ยอดตรงพอดีอยู่แล้วไม่ต้องรู้
   assert.match(match, /item\.status !== "EXACT" && item\.excludedCount > 0/);
 });
+
+test("a matched row opens the three source documents behind it", async () => {
+  const home = await read("../app/views-home.tsx");
+  const css = await read("../app/globals.css");
+
+  // ตารางรายงานตอบได้แค่ "จับคู่แล้ว ยอดเท่านี้" ซึ่งไม่พอตอนต้องยืนยันตัวเลข
+  // คำถามจริงคือ "คำจองไหน จองวันไหน เข้าพักวันไหน เงินเข้าบรรทัดไหนของ statement"
+  assert.match(home, /GroupDetail/);
+  assert.match(home, /setOpenGroup/);
+  assert.match(home, /ดูรายละเอียด/);
+
+  // เอกสารทั้งสามฝั่งต้องอยู่ครบ
+  for (const source of ["จากรายงานการรับเงิน", "จากบัญชีแยกประเภท", "จาก Statement ธนาคาร"]) {
+    assert.ok(home.includes(source), `ขาดฝั่ง ${source}`);
+  }
+  // วันสามวันที่แผนกบัญชีถามหาทุกครั้ง
+  for (const field of ["วันที่สร้างคำจอง", "วัน Check-in", "วัน Check-out"]) {
+    assert.ok(home.includes(field), `ขาด ${field}`);
+  }
+  // และตำแหน่งที่ตัวเลขมาจริง ๆ ในเอกสารต้นฉบับ
+  assert.match(home, /แถวในไฟล์/);
+  assert.match(home, /line\.page/);
+  assert.match(home, /statementSource/);
+  // พร้อมกฎที่ทำให้มันถูกจับคู่ ซึ่งเป็นคำตอบว่า "เชื่อได้เพราะอะไร"
+  assert.match(home, /ทำไมระบบถึงจับคู่ให้/);
+  assert.match(home, /rulesPassed\.map/);
+
+  assert.match(css, /\.group-detail/);
+  assert.match(css, /tr\.detail-row/);
+});
