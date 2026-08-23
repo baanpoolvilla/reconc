@@ -4,8 +4,12 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { migrate } from "../lib/db/client.mjs";
 import {
+  deleteDocument,
   findIssuedReceipt,
   issueReceipt,
+  listDecisions,
+  loadDocumentFile,
+  saveDocumentFile,
   listIssuedReceipts,
   replaceBookings,
   replaceReceipts,
@@ -387,4 +391,89 @@ test("การยกเลิกถูกบันทึกไว้ในส�
 test("ยกเลิกใบที่ไม่มีอยู่ คืน null แทนที่จะพัง", async () => {
   const db = await freshDb();
   assert.equal(await voidReceipt(db, "RC-202607-9999", "ไม่มีจริง"), null);
+});
+
+// ── ลบเอกสารที่นำเข้ามาผิด ───────────────────────────────────────────────────
+//
+// อัปโหลดทับแก้ได้เฉพาะไฟล์ที่ถูกเป็นชนิดและงวดเดียวกับไฟล์ที่ผิด ไฟล์ที่ถูกอ่าน
+// เป็นเดือนที่ไม่มีอยู่จริงจะไม่มีวันถูกทับ ต้องลบทิ้งอย่างเดียว
+
+test("ลบรายงานการรับเงินแล้ว แถวของงวดนั้นหายไป งวดอื่นไม่ถูกแตะ", async () => {
+  const db = await freshDb();
+  await replaceReceipts(db, [
+    receipt("RCP-JUL", "R1", "2026-07-05", 100000),
+    receipt("RCP-AUG", "R2", "2026-08-05", 200000),
+  ]);
+  await recordDocument(db, {
+    id: "DOC-JUL", kind: "collection", periods: ["2026-07"], name: "กรกฎาคม.xlsx",
+    sha256: "c".repeat(64), sizeBytes: 1, rowCount: 1, uploadedBy: "test",
+  });
+
+  const removed = await deleteDocument(db, "DOC-JUL");
+  assert.equal(removed.name, "กรกฎาคม.xlsx");
+  assert.equal(removed.period, "2026-07");
+
+  const left = await db.query("SELECT id FROM clearclose.receipts ORDER BY id");
+  assert.deepEqual(left.map((row) => row.id), ["RCP-AUG"], "เหลือเฉพาะงวดที่ไม่ได้ลบ");
+
+  const docs = await db.query("SELECT id FROM clearclose.documents");
+  assert.equal(docs.length, 0);
+});
+
+test("ลบ statement แล้วรายการเดินบัญชีของบัญชีนั้นหายตามไปด้วย", async () => {
+  const db = await freshDb();
+  await replaceStatement(db, statement("2026-07", [line("L-1", "2026-07-14", 500000)]));
+  await recordDocument(db, {
+    id: "DOC-987", kind: "statement987", periods: ["2026-07"], name: "987.pdf",
+    sha256: "d".repeat(64), sizeBytes: 1, rowCount: 1, uploadedBy: "test",
+  });
+
+  await deleteDocument(db, "DOC-987");
+
+  assert.equal((await db.query("SELECT code FROM clearclose.bank_statements")).length, 0);
+  assert.equal((await db.query("SELECT id FROM clearclose.bank_transactions")).length, 0, "แถวลูกต้องไม่ค้าง");
+});
+
+test("ลบเอกสารแล้วสำเนาไฟล์ต้นฉบับหายไปพร้อมกัน", async () => {
+  const db = await freshDb();
+  await recordDocument(db, {
+    id: "DOC-F", kind: "collection", periods: ["2026-07"], name: "c.xlsx",
+    sha256: "e".repeat(64), sizeBytes: 3, rowCount: 0, uploadedBy: "test",
+  });
+  await saveDocumentFile(db, "DOC-F", { name: "c.xlsx", contentType: "text/plain", sizeBytes: 3, contentBase64: "YWJj" });
+  assert.ok(await loadDocumentFile(db, "DOC-F"));
+
+  await deleteDocument(db, "DOC-F");
+  assert.equal(await loadDocumentFile(db, "DOC-F"), null);
+});
+
+test("ลบเอกสารไม่ลบการจับคู่ที่คนยืนยันเอง — มันกลายเป็นคู่ที่ใช้ไม่ได้แทน", async () => {
+  // อัปโหลดไฟล์ที่ถูกกลับมาแล้วคู่เดิมต้องกลับมาใช้ได้เอง การลบทิ้งตอนนี้เท่ากับ
+  // บังคับให้มานั่งยืนยันใหม่ทั้งหมดโดยไม่จำเป็น
+  const { db, decision } = await withSettledBatch();
+  await deleteDocument(db, "DOC-collection");
+
+  const left = await listDecisions(db);
+  assert.equal(left.length, 1, "การตัดสินใจยังอยู่");
+  assert.equal(left[0].id, decision.id);
+});
+
+test("ลบเอกสารไม่แตะใบเสร็จที่ออกไปแล้ว", async () => {
+  const { db, decision, gross } = await withSettledBatch();
+  const { group } = await settledGroup(db, [decision]);
+  const issued = await issueReceipt(db, {
+    document: documentFor(group), series: receiptSeries(group.date), decisionId: decision.id,
+  });
+
+  await deleteDocument(db, "DOC-collection");
+
+  const reread = await findIssuedReceipt(db, issued.number);
+  assert.ok(reread, "ใบที่ส่งไปแล้วต้องไม่หายไปเพราะเอกสารต้นทางถูกลบ");
+  assert.equal(reread.grossSatang, gross);
+  assert.equal(reread.voidedAt, "", "และต้องไม่ถูกยกเลิกให้เอง — ใบที่ผิดต้องยกเลิกด้วยตัวมันเอง");
+});
+
+test("ลบเอกสารที่ไม่มีอยู่ คืน null แทนที่จะพัง", async () => {
+  const db = await freshDb();
+  assert.equal(await deleteDocument(db, "ไม่มีจริง"), null);
 });

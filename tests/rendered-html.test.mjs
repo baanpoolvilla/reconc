@@ -229,3 +229,43 @@ test("the receipt sheet keeps its own print rules", async () => {
   assert.match(css, /\.receipt-sheet/);
   assert.match(css, /@page \{ size: A4/);
 });
+
+test("six receipts fit one A4 sheet, and only the sheet reaches the paper", async () => {
+  const view = await read("../app/views-receipts.tsx");
+  const css = await read("../app/globals.css");
+
+  // แผ่นถูกแบ่งด้วยการสั่งขึ้นหน้าใหม่ที่ช่องที่หก ไม่ใช่การหั่นอาเรย์เป็นชุด ๆ เอง
+  assert.match(view, /index % 6 === 5/);
+  assert.match(view, /sheet-break/);
+  assert.match(css, /\.sheet-break \{ break-after: page/);
+  assert.match(css, /\.receipt-grid \{[^}]*repeat\(2, 1fr\)/);
+
+  // สามแถวสูง 87mm บวกช่องไฟ 5mm สองช่อง = 271mm พอดีใน A4 ที่หักขอบ 10mm แล้ว 277mm
+  assert.match(css, /\.receipt-mini \{[^}]*min-height: 86mm/);
+  assert.match(css, /@page \{ size: A4; margin: 10mm/);
+
+  // ที่เหลือบนหน้าจอ — ตารางรายการ แบนเนอร์ หัวข้อ — ไม่ใช่ส่วนหนึ่งของเอกสาร
+  // ระบุแบบ "ทุกอย่างที่ไม่ใช่แผ่นเอกสาร" ไม่ใช่ไล่ซ่อนทีละคลาส
+  assert.match(css, /\.content > \*:not\(\.receipt-shell\) \{ display: none/);
+
+  // ใบที่ยกเลิกแล้วไม่ใช่เอกสารที่ส่งให้ใครได้ จึงเลือกพิมพ์ไม่ได้
+  assert.match(view, /disabled=\{Boolean\(row\.voidedAt\)\}/);
+});
+
+test("a document imported by mistake can be deleted, and says what goes with it", async () => {
+  const view = await read("../app/views-data.tsx");
+  const route = await read("../app/api/documents/[id]/route.ts");
+
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /deleteDocument/);
+  // ลบแล้วกระทบยอดใหม่ในคำขอเดียวกัน หน้าจอจึงไม่มีจังหวะที่โชว์ตัวเลขของเอกสารที่ไม่มีแล้ว
+  assert.match(route, /runReconciliation/);
+
+  // การลบต้องผ่านการยืนยันที่บอกผลกระทบก่อน ไม่ใช่ปุ่มเดียวจบ
+  assert.match(view, /ConfirmRemoval/);
+  assert.match(view, /pendingRemoval/);
+  assert.match(view, /ย้อนกลับไม่ได้/);
+  // สองอย่างที่ไม่หายไปกับเอกสาร และผู้ใช้ต้องรู้ก่อนกด
+  assert.match(view, /การจับคู่ที่คุณยืนยันเองไม่ถูกลบ/);
+  assert.match(view, /ใบเสร็จรับเงินที่ออกไปแล้วไม่หาย/);
+});

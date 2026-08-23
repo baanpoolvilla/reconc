@@ -189,7 +189,30 @@ export function Upload() {
   const [result, setResult] = useState<UploadResult | null>(null);
   const [documents, setDocuments] = useState<StoredDocument[] | null>(null);
   const [picked, setPicked] = useState<PickedFile[]>([]);
+  // เอกสารที่กำลังจะถูกลบ — การลบต้องผ่านการยืนยันที่บอกผลกระทบก่อนเสมอ
+  const [pendingRemoval, setPendingRemoval] = useState<StoredDocument | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  const removeDocument = async (document: StoredDocument) => {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/documents/${document.id}`, { method: "DELETE" });
+      const body = await response.json();
+      if (!response.ok) {
+        setResult({ error: body.error ?? "ลบเอกสารไม่สำเร็จ" });
+        return;
+      }
+      setDocuments((rows) => (rows ?? []).filter((row) => row.id !== document.id));
+      setPendingRemoval(null);
+      // ตัวเลขทั้งแอปมาจากรอบกระทบยอดที่เพิ่งถูกคำนวณใหม่ฝั่งเซิร์ฟเวอร์ การโหลด
+      // หน้าใหม่คือทางเดียวที่ทำให้ทุกหน้าจอเห็นชุดเดียวกัน ไม่ใช่แค่หน้านี้
+      window.location.reload();
+    } catch {
+      setResult({ error: "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ" });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // อ่านชื่อไฟล์ที่เพิ่งเลือกทันทีในเบราว์เซอร์ ด้วยกฎชุดเดียวกับที่เซิร์ฟเวอร์ใช้
   // ผู้ใช้จึงเห็นตั้งแต่ก่อนกดอัปโหลดว่าไฟล์เข้าจริงไหม และจะไปเป็นเอกสารชนิดไหน
@@ -400,7 +423,22 @@ export function Upload() {
         ) : null}
       </section>
 
-      <ArchiveSection documents={documents} period={period} onPick={setPeriod} />
+      <ArchiveSection
+        documents={documents}
+        period={period}
+        onPick={setPeriod}
+        busy={busy}
+        onRemove={(document) => setPendingRemoval(document)}
+      />
+
+      {pendingRemoval && (
+        <ConfirmRemoval
+          document={pendingRemoval}
+          busy={busy}
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => void removeDocument(pendingRemoval)}
+        />
+      )}
     </>
   );
 }
@@ -410,10 +448,53 @@ export function Upload() {
 // ตัวเลขของงวดหนึ่งจะตรวจย้อนกลับได้จริงก็ต่อเมื่อเปิดไฟล์ที่มันถูกอ่านมาได้ด้วย
 // รายการนี้จึงเรียงตามงวด และให้กดดาวน์โหลดไฟล์ต้นฉบับได้ทุกฉบับที่ยังเก็บไว้
 
-function ArchiveSection({ documents, period, onPick }: {
+/**
+ * ยืนยันก่อนลบเอกสาร
+ *
+ * การลบเอกสารหนึ่งฉบับลบแถวของ "ชนิด + งวด" นั้นทั้งชุด ซึ่งมากกว่าที่ชื่อไฟล์
+ * บอกไว้มาก กล่องนี้จึงบอกจำนวนแถวและงวดที่จะหายไปก่อน แล้วค่อยให้กด
+ */
+function ConfirmRemoval({ document, busy, onCancel, onConfirm }: {
+  document: StoredDocument;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const label = DOCUMENT_LABELS[document.kind] ?? document.kind;
+  return (
+    <section className="panel danger-panel">
+      <PanelTitle title="ลบเอกสารฉบับนี้ออกจากระบบ" action={<Pill tone="red">ย้อนกลับไม่ได้</Pill>} />
+      <div className="confirm-remove">
+        <p>
+          <b>{document.name}</b>
+          <small>
+            {label} · งวด {document.period ? thaiMonthLabel(document.period) : "ไม่ระบุ"} ·
+            {" "}{Number(document.row_count).toLocaleString("en-US")} แถว
+          </small>
+        </p>
+        <ul>
+          <li>แถวของ<b>{label}</b>ในงวดนี้จะถูกลบทั้งชุด แล้วกระทบยอดใหม่ทันที</li>
+          <li>งวดอื่นและเอกสารชนิดอื่นไม่ถูกแตะ</li>
+          <li>การจับคู่ที่คุณยืนยันเองไม่ถูกลบ แต่คู่ที่อ้างถึงแถวที่หายไปจะขึ้นว่าใช้ไม่ได้แล้ว — อัปโหลดไฟล์ที่ถูกกลับมา แล้วมันกลับมาใช้ได้เอง</li>
+          <li>ใบเสร็จรับเงินที่ออกไปแล้วไม่หายและไม่เปลี่ยน เพราะเก็บเป็นสำเนาไว้ต่างหาก</li>
+        </ul>
+        <div className="confirm-remove-actions">
+          <button className="ghost-button" onClick={onCancel} disabled={busy}>ยกเลิก</button>
+          <button className="danger-button" onClick={onConfirm} disabled={busy}>
+            {busy ? "กำลังลบ…" : "ลบเอกสารและแถวของงวดนี้"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ArchiveSection({ documents, period, onPick, onRemove, busy }: {
   documents: StoredDocument[] | null;
   period: string;
   onPick: (next: string) => void;
+  onRemove: (document: StoredDocument) => void;
+  busy: boolean;
 }) {
   const byPeriod = useMemo(() => {
     const buckets = new Map<string, StoredDocument[]>();
@@ -456,6 +537,12 @@ function ArchiveSection({ documents, period, onPick }: {
                 {row.has_file
                   ? <a className="secondary-button" href={`/api/documents/${row.id}`}>⇩ ต้นฉบับ</a>
                   : <em>ไม่ได้เก็บไฟล์</em>}
+                <button
+                  className="danger-button"
+                  disabled={busy}
+                  title="ลบเอกสารฉบับนี้และแถวที่มันสร้างไว้"
+                  onClick={() => onRemove(row)}
+                >ลบ</button>
               </div>
             ))}
           </div>

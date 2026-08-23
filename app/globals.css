@@ -229,6 +229,20 @@ code { padding: 2px 6px; border-radius: 6px; background: rgba(20,69,58,.08); fon
 .provider-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .provider-head b { font-size: 14px; }
 
+/* ── ลบเอกสารที่นำเข้ามาผิด ─────────────────────────────────────────────────── */
+
+.danger-button { padding: 9px 14px; border: 1px solid #e8c4c0; border-radius: 11px; background: white; color: var(--red); font-size: 13px; font-weight: 700; cursor: pointer; }
+.danger-button:hover:not(:disabled) { background: var(--red-soft); }
+.danger-button:disabled { opacity: .5; cursor: not-allowed; }
+.danger-panel { border-color: #e8c4c0; }
+.confirm-remove { padding: 0 22px 20px; }
+.confirm-remove > p { margin: 0 0 12px; }
+.confirm-remove > p b { display: block; font-size: 14px; }
+.confirm-remove > p small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.confirm-remove ul { margin: 0 0 16px; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.confirm-remove ul b { color: var(--ink); }
+.confirm-remove-actions { display: flex; gap: 8px; }
+
 /* ── ใบเสร็จรับเงิน ─────────────────────────────────────────────────────────
    เอกสารบนจอกับเอกสารบนกระดาษเป็นอันเดียวกัน หน้าจอที่พิมพ์ออกมาแล้วหน้าตา
    ไม่เหมือนที่เห็น คือเอกสารที่ไม่มีใครกล้าส่งออกไป */
@@ -275,13 +289,51 @@ tr.muted-row .mono { text-decoration: line-through; }
 .receipt-sign span { display: block; width: 190px; border-bottom: 1px solid #222; }
 .receipt-sign small { display: block; margin-top: 6px; }
 
+/* ── หกใบต่อกระดาษ A4 หนึ่งแผ่น ─────────────────────────────────────────────
+   A4 กว้าง 210mm สูง 297mm หักขอบ 10mm สี่ด้านเหลือ 190 × 277mm
+   สองคอลัมน์ สามแถว ช่องละ 92 × 89mm พอดีโดยไม่ต้องย่อ */
+.receipt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6mm; max-width: 200mm; margin: 0 auto; }
+.receipt-mini { display: flex; flex-direction: column; min-height: 86mm; padding: 5mm; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 10.5px; }
+.receipt-mini header { display: flex; justify-content: space-between; gap: 6px; padding-bottom: 3mm; border-bottom: 1px solid #222; }
+.receipt-mini header b { display: block; font: 650 11.5px var(--serif); }
+.receipt-mini header small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+.receipt-mini-title { text-align: right; white-space: nowrap; }
+.receipt-mini-title b { font-size: 12.5px; }
+.receipt-mini-meta { display: flex; justify-content: space-between; gap: 8px; padding: 3mm 0; border-bottom: 1px solid var(--line-soft); }
+.receipt-mini-meta span { display: flex; flex-direction: column; gap: 1px; font-size: 10.5px; font-weight: 600; }
+.receipt-mini-meta small { color: var(--muted); font-size: 9px; font-weight: 400; }
+.receipt-mini-lines { flex: 1; margin: 0; padding: 3mm 0 0; list-style: none; }
+.receipt-mini-lines li { display: flex; justify-content: space-between; gap: 8px; padding: 1mm 0; font-size: 10px; }
+.receipt-mini-lines em { font-style: normal; font-variant-numeric: tabular-nums; }
+.receipt-mini-more { color: var(--muted); }
+.receipt-mini footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding-top: 3mm; border-top: 2px solid #222; }
+.receipt-mini-total small { display: block; color: var(--muted); font-size: 9px; }
+.receipt-mini-total b { font: 650 15px var(--serif); }
+.receipt-mini-sign { color: var(--muted); font-size: 9px; text-align: center; }
+.receipt-mini-sign span { display: block; width: 30mm; margin-bottom: 2px; border-bottom: 1px solid #222; }
+
+/* ── ช่องติ๊กเลือกใบที่จะพิมพ์ ─────────────────────────────────────────────── */
+th.tick, td.tick { width: 44px; padding-right: 0; }
+td.tick input, th.tick input { width: 16px; height: 16px; cursor: pointer; }
+td.tick input:disabled { cursor: not-allowed; opacity: .4; }
+
 @media print {
-  /* เหลือแต่ตัวเอกสารบนกระดาษ ปุ่มกับเมนูไม่ใช่ส่วนหนึ่งของใบเสร็จ */
-  .side, .topbar, footer, .toast, .no-print, .page-heading, .banner { display: none !important; }
+  /* กระดาษได้เฉพาะตัวเอกสาร
+     ระบุเป็น "ทุกอย่างใน .content ที่ไม่ใช่แผ่นเอกสาร ให้หายไป" ไม่ใช่ไล่ซ่อน
+     ทีละคลาส เพราะหน้าจอที่กดพิมพ์ยังมีตารางรายการกับแบนเนอร์ค้างอยู่ด้วยเสมอ
+     และการไล่ซ่อนทีละอันจะพลาดทุกครั้งที่มีของใหม่โผล่มาบนหน้าเดียวกัน */
+  .side, .topbar, .toast, .no-print { display: none !important; }
+  .content > *:not(.receipt-shell) { display: none !important; }
   .app, main, .content { display: block; margin: 0; padding: 0; background: #fff; }
   .receipt-sheet { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; }
   .receipt-stamp { opacity: 0.6; }
-  @page { size: A4; margin: 16mm; }
+
+  /* แผ่นรวมหกใบ — ช่องละ 92.5 × 87mm วางสองคอลัมน์สามแถวลงตัวใน 190 × 277mm */
+  .receipt-grid { max-width: none; gap: 5mm; }
+  .receipt-mini { min-height: 87mm; break-inside: avoid; }
+  .sheet-break { break-after: page; }
+
+  @page { size: A4; margin: 10mm; }
 }
 
 .basket { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }

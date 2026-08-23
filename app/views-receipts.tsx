@@ -75,6 +75,9 @@ export function Receipts() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [openNumber, setOpenNumber] = useState<string | null>(null);
+  // ใบที่ติ๊กไว้เพื่อพิมพ์รวมกัน — หกใบต่อกระดาษ A4 หนึ่งแผ่น
+  const [picked, setPicked] = useState<string[]>([]);
+  const [sheetMode, setSheetMode] = useState(false);
 
   // `loading` คือ "ยังไม่เคยอ่านสำเร็จสักครั้ง" ส่วนสถานะระหว่างกดปุ่มคือ `working`
   // การอ่านซ้ำหลังออกใบหรือยกเลิกใบ ทำด้วยการขยับ `reloadToken` ไม่ใช่เรียก
@@ -125,6 +128,10 @@ export function Receipts() {
 
   const missing = missingOrganizationFields(settings.organization);
   const open = issued.find((item) => item.number === openNumber) ?? null;
+  const printable = issued.filter((item) => !item.voidedAt);
+  const sheet = picked
+    .map((number) => issued.find((item) => item.number === number))
+    .filter((item): item is IssuedReceipt => Boolean(item));
 
   if (!online) {
     return (
@@ -211,11 +218,28 @@ export function Receipts() {
 
       {!loading && issued.length > 0 && (
         <section className="panel">
-          <PanelTitle title={`ใบที่ออกไปแล้ว · ${issued.length} ใบ`} />
+          <PanelTitle
+            title={`ใบที่ออกไปแล้ว · ${issued.length} ใบ`}
+            action={
+              <button
+                className="small-primary"
+                disabled={!picked.length}
+                onClick={() => setSheetMode(true)}
+              >พิมพ์รวม {picked.length ? `${picked.length} ใบ · ` : ""}6 ใบ/แผ่น</button>
+            }
+          />
           <div className="responsive-table">
             <table>
               <thead>
                 <tr>
+                  <th className="tick">
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกทุกใบที่ยังใช้ได้"
+                      checked={printable.length > 0 && picked.length === printable.length}
+                      onChange={(event) => setPicked(event.target.checked ? printable.map((row) => row.number) : [])}
+                    />
+                  </th>
                   <th>เลขที่</th><th>วันที่รับเงิน</th><th>ผู้จ่าย</th>
                   <th className="num">รับสุทธิ</th><th>สถานะ</th><th />
                 </tr>
@@ -223,6 +247,17 @@ export function Receipts() {
               <tbody>
                 {issued.map((row) => (
                   <tr key={row.number} className={row.voidedAt ? "muted-row" : ""}>
+                    <td className="tick">
+                      {/* ใบที่ยกเลิกแล้วไม่ใช่เอกสารที่ส่งให้ใครได้ จึงเลือกพิมพ์ไม่ได้ */}
+                      <input
+                        type="checkbox"
+                        aria-label={`เลือก ${row.number}`}
+                        disabled={Boolean(row.voidedAt)}
+                        checked={picked.includes(row.number)}
+                        onChange={() => setPicked((list) =>
+                          (list.includes(row.number) ? list.filter((item) => item !== row.number) : [...list, row.number]))}
+                      />
+                    </td>
                     <td className="mono">{row.number}</td>
                     <td>{thaiDate(row.date)}</td>
                     <td className="wrap">{row.payerName}</td>
@@ -243,7 +278,11 @@ export function Receipts() {
         </section>
       )}
 
-      {open && (
+      {sheetMode && sheet.length > 0 && (
+        <ReceiptGrid receipts={sheet} onClose={() => setSheetMode(false)} />
+      )}
+
+      {open && !sheetMode && (
         <ReceiptSheet
           receipt={open}
           working={working}
@@ -377,5 +416,84 @@ function ReceiptSheet({ receipt, working, onClose, onVoid }: {
         {receipt.voidedAt && <p className="receipt-note">ยกเลิกเมื่อ {receipt.voidedAt} · เหตุผล: {receipt.voidReason}</p>}
       </article>
     </section>
+  );
+}
+
+/**
+ * หกใบต่อกระดาษ A4 หนึ่งแผ่น
+ *
+ * แต่ละช่องเป็นเอกสารที่สมบูรณ์ในตัวเอง — ผู้ออกพร้อมเลขผู้เสียภาษี ชื่อเอกสาร
+ * เลขที่ วันที่ ผู้จ่าย และยอดที่รับ — ตัดแบ่งแล้วใช้ได้ทีละใบ สิ่งที่ยอมตัดออก
+ * เพราะพื้นที่ไม่พอคือรายการคำจองที่เกินสามบรรทัด ซึ่งจะถูกยุบเป็น "และอีก n รายการ"
+ * ใบเต็มที่มีรายการครบยังพิมพ์ได้จากปุ่มเปิดดูทีละใบ
+ *
+ * แผ่นถูกแบ่งด้วยการสั่งขึ้นหน้าใหม่ที่ช่องที่เจ็ด ไม่ใช่การหั่นอาเรย์เป็นชุด ๆ
+ * เอง เพราะความสูงจริงของช่องเป็นเรื่องของเบราว์เซอร์ ไม่ใช่ของเรา
+ */
+function ReceiptGrid({ receipts, onClose }: { receipts: IssuedReceipt[]; onClose: () => void }) {
+  const sheets = Math.ceil(receipts.length / 6);
+
+  return (
+    <section className="receipt-shell">
+      <div className="receipt-toolbar no-print">
+        <button className="ghost-button" onClick={onClose}>← กลับไปรายการ</button>
+        <div>
+          <span className="panel-note">
+            {receipts.length} ใบ · {sheets} แผ่น A4 · รายการคำจองที่เกินสามบรรทัดถูกยุบให้พอดีช่อง
+          </span>
+          <button className="primary-button" onClick={() => window.print()}>พิมพ์ / บันทึกเป็น PDF</button>
+        </div>
+      </div>
+
+      <div className="receipt-grid">
+        {receipts.map((receipt, index) => (
+          <ReceiptCard key={receipt.number} receipt={receipt} breakAfter={index % 6 === 5} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReceiptCard({ receipt, breakAfter }: { receipt: IssuedReceipt; breakAfter: boolean }) {
+  const document = receipt.document;
+  const shown = document.lines.slice(0, 3);
+  const hidden = document.lines.length - shown.length;
+
+  return (
+    <article className={`receipt-mini ${breakAfter ? "sheet-break" : ""}`}>
+      <header>
+        <div>
+          <b>{document.issuer.name}</b>
+          <small>เลขประจำตัวผู้เสียภาษี {taxIdDisplay(document.issuer.taxId)}</small>
+        </div>
+        <div className="receipt-mini-title">
+          <b>{document.documentLabel}</b>
+          <small className="mono">{document.number}</small>
+        </div>
+      </header>
+
+      <div className="receipt-mini-meta">
+        <span><small>วันที่</small>{thaiDate(document.date)}</span>
+        <span><small>ได้รับเงินจาก</small>{document.payer.name}</span>
+      </div>
+
+      <ul className="receipt-mini-lines">
+        {shown.map((row) => (
+          <li key={row.reservationNo}>
+            <span className="mono">{row.reservationNo}</span>
+            <em>{baht(row.amountSatang)}</em>
+          </li>
+        ))}
+        {hidden > 0 && <li className="receipt-mini-more">และอีก {hidden} รายการ</li>}
+      </ul>
+
+      <footer>
+        <div className="receipt-mini-total">
+          <small>รับเงินสุทธิ</small>
+          <b>{baht(document.netSatang)}</b>
+        </div>
+        <div className="receipt-mini-sign"><span />ผู้รับเงิน</div>
+      </footer>
+    </article>
   );
 }
