@@ -472,3 +472,17 @@ test("an OTA batch whose bookings are in an unloaded month can be parked", async
   assert.match(match, /ยังอยู่ในยอดคุม/);
   assert.match(help, /พักไว้ไม่ใช่การซ่อน/);
 });
+
+test("an OTA batch says when its bookings were filtered out by settings", async () => {
+  const match = await read("../app/views-match.tsx");
+
+  // ใบที่ถูกตัดด้วยการตั้งค่า กับใบที่ไม่มีอยู่จริง หน้าตาเหมือนกันจากข้างนอก —
+  // ก้อนขึ้นว่า "ไม่พบคำจอง" ทั้งคู่ แต่อันหนึ่งแก้ได้ในสามวินาที
+  assert.match(match, /excludedCount/);
+  assert.match(match, /excludedCandidates/);
+  assert.match(match, /EXCLUSION_SCOPE_LABEL/);
+  assert.match(match, /ถูกตั้งค่าไม่ให้นับไว้/);
+
+  // เตือนเฉพาะก้อนที่ยังไม่ลงตัว — ก้อนที่ยอดตรงพอดีอยู่แล้วไม่ต้องรู้
+  assert.match(match, /item\.status !== "EXACT" && item\.excludedCount > 0/);
+});

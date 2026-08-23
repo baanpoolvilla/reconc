@@ -270,3 +270,49 @@ test("ก้อนที่เหลื่อมเดือน เห็นไ�
     );
   }
 });
+
+// ── ถูกตัดด้วยการตั้งค่า ≠ หาไม่เจอ ────────────────────────────────────────
+//
+// จากข้างนอกสองอย่างนี้หน้าตาเหมือนกันเป๊ะ: ก้อนขึ้นว่า "ไม่พบคำจอง" ทั้งคู่
+// ต่างกันตรงที่อันหนึ่งแก้ได้ในสามวินาทีถ้ารู้ อีกอันต้องไปตามเอกสารมาก่อน
+
+test("ก้อนที่หาไม่เจอเพราะคำจองถูกตั้งค่าไม่ให้นับ ต้องบอกว่าถูกตัดด้วยกฎข้อไหน", () => {
+  const dataset = build(
+    [
+      // เข้าเงื่อนไขของก้อนทุกอย่าง แต่กลุ่ม Medina ถูกค่าตั้งต้นตัดออก
+      { ...receipt("RCP-M", "2026-07-20", 500000, { checkIn: "2026-07-21", checkOut: "2026-07-22" }), group: "Medina-บางแสน" },
+    ],
+    [otaCredit("L-1", "2026-07-30", 500000)],
+  );
+  const [proposal] = applySettings(dataset, DEFAULT_SETTINGS, [], []).settlements;
+
+  assert.equal(proposal.status, "EMPTY", "ไม่มีคำจองให้จับ เพราะใบเดียวที่มีถูกตัดออก");
+  assert.equal(proposal.excludedCount, 1);
+  assert.equal(proposal.excludedSatang, 500000);
+  assert.equal(proposal.excludedCandidates[0].scope, "property");
+  assert.equal(proposal.excludedCandidates[0].value, "Medina");
+});
+
+test("ปิดการตัดออกแล้ว ใบเดียวกันกลับมาจับคู่ได้", () => {
+  const dataset = build(
+    [{ ...receipt("RCP-M", "2026-07-20", 500000, { checkIn: "2026-07-21", checkOut: "2026-07-22" }), group: "Medina-บางแสน" }],
+    [otaCredit("L-1", "2026-07-30", 500000)],
+  );
+  const open = { ...DEFAULT_SETTINGS, exclusions: { ...DEFAULT_SETTINGS.exclusions, enabled: false } };
+  const [proposal] = applySettings(dataset, open, [], []).settlements;
+
+  assert.equal(proposal.status, "EXACT");
+  assert.deepEqual(proposal.selectedIds, ["RCP-M"]);
+  assert.equal(proposal.excludedCount, 0, "ไม่มีอะไรถูกตัดแล้ว");
+});
+
+test("ใบที่ถูกตัดออกไม่เคยถูกนำมาจับคู่ แค่ใช้ตอบว่าทำไมถึงหาไม่เจอ", () => {
+  const dataset = build(
+    [{ ...receipt("RCP-M", "2026-07-20", 500000, { checkIn: "2026-07-21", checkOut: "2026-07-22" }), group: "Medina-บางแสน" }],
+    [otaCredit("L-1", "2026-07-30", 500000)],
+  );
+  const [proposal] = applySettings(dataset, DEFAULT_SETTINGS, [], []).settlements;
+
+  assert.deepEqual(proposal.selectedIds, []);
+  assert.ok(!proposal.candidates.some((row) => row.id === "RCP-M"), "ต้องไม่โผล่ในกองให้ติ๊กเลือก");
+});

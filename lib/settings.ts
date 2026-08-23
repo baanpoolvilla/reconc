@@ -203,6 +203,10 @@ export type SettlementProposal = {
   missingPeriods: string[];
   /** จริงเมื่อก้อนนี้หาคำจองไม่ได้เพราะเอกสารยังมาไม่ครบ ไม่ใช่เพราะผิดพลาด */
   suggestHold: boolean;
+  /** ใบที่เข้าเงื่อนไขของก้อนนี้ แต่การตั้งค่าตัดออกก่อนถึงเครื่องมือจับคู่ */
+  excludedCandidates: ExclusionBucket[];
+  excludedCount: number;
+  excludedSatang: number;
   candidates: SettlementCandidate[];
   selectedIds: string[];
 };

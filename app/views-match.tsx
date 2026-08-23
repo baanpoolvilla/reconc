@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Banner, EmptyState, PageHeading, PanelTitle, Pill, SearchBox, Tabs, useWorkspace } from "./ui";
 import { type Receipt, type StatementLine, baht, thaiDate, thaiMonthLabel } from "../lib/dataset";
 import {
-  DECISION_REASONS, HOLD_REASONS,
+  DECISION_REASONS, EXCLUSION_SCOPE_LABEL, HOLD_REASONS,
   type DecisionReason, type HoldReason, type SettlementProposal,
   dayGap, holdLine, releaseLine,
 } from "../lib/settings";
@@ -504,6 +504,14 @@ function settlementVerdict(item: SettlementProposal) {
 function settlementNote(item: SettlementProposal) {
   const notes: string[] = [];
   if (item.ambiguous) notes.push(`มีชุดคำจองที่ยอดตรงพอดีมากกว่าหนึ่งชุด (${item.exactCount} ชุด) ระบบเลือกชุดที่วันใกล้รอบโอนที่สุดให้ก่อน`);
+  // เตือนเฉพาะก้อนที่ยังไม่ลงตัว — ก้อนที่ยอดตรงพอดีอยู่แล้ว การบอกว่ามีใบถูกตัด
+  // เป็นเสียงรบกวน ไม่ใช่ข้อมูล
+  if (item.status !== "EXACT" && item.excludedCount > 0) {
+    const by = item.excludedCandidates
+      .map((bucket) => `${EXCLUSION_SCOPE_LABEL[bucket.scope]} “${bucket.value}”`)
+      .join(" · ");
+    notes.push(`มีคำจองที่เข้าเงื่อนไขของก้อนนี้อีก ${item.excludedCount} ใบ (${baht(item.excludedSatang)}) แต่ถูกตั้งค่าไม่ให้นับไว้ — ${by}`);
+  }
   if (item.outOfWindowCount) notes.push(`${item.outOfWindowCount} คำจองอยู่นอกรอบโอนปกติของ${item.providerLabel || "เจ้านี้"}`);
   if (item.status === "SHORT") notes.push("รวมคำจองที่หาได้ทั้งหมดแล้วยังไม่ถึงยอดที่เข้าบัญชี — คำจองที่เหลือน่าจะอยู่ในเอกสารเดือนก่อนที่ยังไม่ได้อัปโหลด");
   if (item.status === "EMPTY") notes.push(`ไม่มีคำจองของ${item.providerLabel || "เจ้านี้"}ที่วันตั้งต้นอยู่ก่อนวันที่เงินเข้า — ถ้าก้อนนี้เป็นของเดือนก่อน ต้องอัปโหลดรายงานการรับเงินเดือนนั้นก่อน`);
