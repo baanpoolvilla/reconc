@@ -58,8 +58,8 @@ test("full.sql รันบนฐานข้อมูลเปล่าแล�
   );
   assert.deepEqual(tables.rows.map((row) => row.table_name), [
     "app_settings", "audit_events", "bank_statements", "bank_transactions", "bookings",
-    "document_files", "documents", "issued_receipts", "match_decisions", "receipts",
-    "reconciliation_runs", "schema_migrations",
+    "document_files", "documents", "issued_receipts", "line_holds", "match_decisions",
+    "receipts", "reconciliation_runs", "schema_migrations",
   ]);
 
   // และต้องบันทึกไว้ว่ารัน migration ไหนไปแล้วบ้าง ไม่งั้นตัวรันในระบบจะรันซ้ำทั้งชุด

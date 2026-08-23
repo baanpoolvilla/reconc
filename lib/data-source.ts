@@ -23,6 +23,7 @@ export type LoadedDataset = {
   online: boolean;
   settings: unknown;
   decisions: unknown[];
+  holds: unknown[];
   error?: string;
 };
 
@@ -56,6 +57,7 @@ const nothing = (extra: Partial<LoadedDataset>): LoadedDataset => ({
   online: false,
   settings: null,
   decisions: [],
+  holds: [],
   ...extra,
 });
 
@@ -63,16 +65,17 @@ export async function loadDataset(): Promise<LoadedDataset> {
   if (!process.env.DATABASE_URL) return nothing({});
 
   try {
-    const [{ getDb, ensureSchema }, { latestDataset, listDecisions, loadStoredSettings }] = await Promise.all([
+    const [{ getDb, ensureSchema }, { latestDataset, listDecisions, listHolds, loadStoredSettings }] = await Promise.all([
       import("./db/client.mjs"),
       import("./db/repository.mjs"),
     ]);
     const db = await getDb();
     await ensureSchema(db);
-    const [stored, settings, decisions] = await Promise.all([
+    const [stored, settings, decisions, holds] = await Promise.all([
       latestDataset(db) as Promise<Dataset | null>,
       loadStoredSettings(db),
       listDecisions(db),
+      listHolds(db),
     ]);
     return {
       dataset: stored ?? emptyDataset,
@@ -81,6 +84,7 @@ export async function loadDataset(): Promise<LoadedDataset> {
       online: true,
       settings,
       decisions,
+      holds,
     };
   } catch (error) {
     // Surface the failure rather than quietly serving numbers from somewhere else.

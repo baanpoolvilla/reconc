@@ -1,9 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Banner, EmptyState, PageHeading, Pill, SearchBox, Tabs, useWorkspace } from "./ui";
+import { Banner, EmptyState, PageHeading, PanelTitle, Pill, SearchBox, Tabs, useWorkspace } from "./ui";
 import { type Receipt, type StatementLine, baht, thaiDate, thaiMonthLabel } from "../lib/dataset";
-import { DECISION_REASONS, type DecisionReason, type SettlementProposal, dayGap } from "../lib/settings";
+import {
+  DECISION_REASONS, HOLD_REASONS,
+  type DecisionReason, type HoldReason, type SettlementProposal,
+  dayGap, holdLine, releaseLine,
+} from "../lib/settings";
 
 // งานจับคู่ — ทั้งการแก้ยอดที่ไม่ตรง และการแตกยอดก้อนโอนของ OTA
 //
@@ -506,6 +510,141 @@ function settlementNote(item: SettlementProposal) {
   return notes.join(" · ");
 }
 
+/**
+ * พักก้อนนี้ไว้
+ *
+ * ก้อนโอนต้นเดือนของ Trip.com หรือ Booking.com เป็นของคำจองที่เช็คเอาท์เดือนก่อน
+ * รายงานการรับเงินของเดือนที่เงินเข้าจึงไม่มีวันมีคำจองนั้น ก้อนแบบนี้ไม่ใช่งานที่
+ * ทำผิด แต่เป็นงานที่ยังทำไม่ได้ — ปนอยู่ในคิวก็มีแต่ทำให้ตัวเลขงานค้างไม่มีความหมาย
+ *
+ * พักไว้ไม่ใช่การซ่อน: ยอดยังอยู่ในยอดคุม เหตุผลถูกบันทึกลงสมุดตรวจ และปลดกลับ
+ * เข้าคิวได้ทุกเมื่อ — โดยเฉพาะเมื่ออัปโหลดเดือนที่ขาดเข้ามาแล้ว
+ */
+function HoldBox({ proposal, onDone }: { proposal: SettlementProposal; onDone: () => void }) {
+  const { notify, busy } = useWorkspace();
+  const suggested: HoldReason = proposal.missingPeriods.length ? "PRIOR_PERIOD" : "AWAITING_DOCUMENT";
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<HoldReason>(suggested);
+  const [note, setNote] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const stay = proposal.expectedStay;
+
+  const submit = async () => {
+    setWorking(true);
+    const result = await holdLine({
+      bankLineId: proposal.lineId,
+      account: proposal.account,
+      period: proposal.period,
+      date: proposal.date,
+      amountSatang: proposal.netSatang,
+      detail: proposal.detail || proposal.description,
+      reason,
+      note: note.trim(),
+      expectedPeriod: proposal.missingPeriods[0] ?? "",
+    });
+    setWorking(false);
+    if (!result.ok) { notify(result.error ?? "พักไว้ไม่สำเร็จ", "red"); return; }
+    notify("พักก้อนนี้ไว้แล้ว · ปลดกลับได้ที่ด้านล่างของหน้านี้");
+    onDone();
+  };
+
+  return (
+    <div className="hold-box">
+      {proposal.suggestHold && stay && (
+        <p className="hold-why">
+          <b>ทำไมถึงหาคำจองไม่เจอ</b>
+          รอบโอนของ{proposal.providerLabel}ห่างจากวัน{stay.anchor === "checkIn" ? "เช็คอิน" : "เช็คเอาท์"} {" "}
+          {proposal.expectedStay?.from && <>ประมาณ {thaiDate(stay.from)} – {thaiDate(stay.to)}</>}
+          {" "}ซึ่งอยู่ในงวด <b>{proposal.missingPeriods.map(thaiMonthLabel).join(" และ ")}</b> ที่ยังไม่มีข้อมูลในระบบ —
+          อัปโหลดรายงานการรับเงินของเดือนนั้นแล้วก้อนนี้จะจับคู่ได้เอง
+        </p>
+      )}
+
+      {!open && (
+        <button className="secondary-button" disabled={busy} onClick={() => setOpen(true)}>
+          ⏸ พักก้อนนี้ไว้ก่อน
+        </button>
+      )}
+
+      {open && (
+        <div className="hold-form">
+          <p>พักไว้เพราะอะไร — ยอดยังอยู่ในยอดคุมครบ และปลดกลับเข้าคิวได้ทุกเมื่อ</p>
+          <div className="reason-choices">
+            {(Object.keys(HOLD_REASONS) as HoldReason[]).map((key) => (
+              <button key={key} type="button" className={reason === key ? "active" : ""} onClick={() => setReason(key)}>
+                <b>{HOLD_REASONS[key].label}</b>
+                <small>{HOLD_REASONS[key].detail}</small>
+              </button>
+            ))}
+          </div>
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder={reason === "OTHER" ? "เขียนเหตุผลกำกับ (จำเป็น)" : "หมายเหตุเพิ่มเติม (ไม่บังคับ)"}
+          />
+          <div className="hold-actions">
+            <button className="ghost-button" onClick={() => setOpen(false)} disabled={working}>ยกเลิก</button>
+            <button
+              className="primary-button"
+              disabled={working || busy || (reason === "OTHER" && !note.trim())}
+              onClick={submit}
+            >{working ? "กำลังพัก…" : "พักไว้"}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** ก้อนที่พักไว้ — เห็นได้เสมอ ปลดกลับได้เสมอ */
+export function HeldLines() {
+  const { effective, notify, busy } = useWorkspace();
+  const holds = effective.holds;
+  const [working, setWorking] = useState("");
+
+  if (!holds.length) return null;
+
+  const release = async (bankLineId: string) => {
+    setWorking(bankLineId);
+    const result = await releaseLine(bankLineId);
+    setWorking("");
+    notify(result.ok ? "ปลดพักแล้ว ก้อนนี้กลับเข้าคิวงาน" : (result.error ?? "ปลดพักไม่สำเร็จ"), result.ok ? "green" : "red");
+  };
+
+  return (
+    <section className="panel">
+      <PanelTitle
+        title="ก้อนที่พักไว้"
+        action={<span className="panel-note">{holds.length} ก้อน · {baht(effective.heldSatang)} · ยังอยู่ในยอดคุมครบ</span>}
+      />
+      <div className="held-list">
+        {holds.map((hold) => (
+          <div key={hold.bankLineId} className="held-row">
+            <span className="held-mark">⏸</span>
+            <span className="held-body">
+              <b>{baht(hold.amountSatang)}</b>
+              <small>
+                {thaiDate(hold.date)} · •••{hold.account} · {hold.detail || "—"}
+              </small>
+              <small className="held-reason">
+                {HOLD_REASONS[hold.reason as HoldReason]?.label ?? hold.reason}
+                {hold.expectedPeriod && <> · รอเอกสารงวด {thaiMonthLabel(hold.expectedPeriod)}</>}
+                {hold.note && <> · {hold.note}</>}
+              </small>
+            </span>
+            <button
+              className="ghost-button"
+              disabled={busy || working === hold.bankLineId}
+              onClick={() => void release(hold.bankLineId)}
+            >{working === hold.bankLineId ? "กำลังปลด…" : "ปลดพัก"}</button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function Settlements() {
   const { effective, settings, go } = useWorkspace();
   const proposals = effective.settlements;
@@ -603,6 +742,7 @@ export function Settlements() {
                 {settlementNote(current) && (
                   <Banner tone="amber" title="ตรวจก่อนยืนยัน">{settlementNote(current)}</Banner>
                 )}
+                <HoldBox proposal={current} onDone={() => setOpenId(null)} />
                 <Basket
                   key={current.id}
                   kind="SETTLEMENT"
@@ -622,6 +762,8 @@ export function Settlements() {
           </div>
         </div>
       )}
+
+      <HeldLines />
     </>
   );
 }

@@ -449,3 +449,26 @@ test("the report exports what is still open, not only what closed", async () => 
   assert.match(home, /ไม่รู้ว่าของใคร/);
   assert.match(home, /outOfScope\.map/);
 });
+
+test("an OTA batch whose bookings are in an unloaded month can be parked", async () => {
+  const match = await read("../app/views-match.tsx");
+  const help = await read("../app/views-help.tsx");
+
+  // ก้อนต้นเดือนของ Trip/Booking เป็นของคนที่เช็คเอาท์เดือนก่อน รายงานเดือนที่เงิน
+  // เข้าไม่มีวันมีคำจองนั้น — ปล่อยค้างในคิวคือทำให้ตัวเลขงานค้างไม่มีความหมาย
+  assert.match(match, /HoldBox/);
+  assert.match(match, /HeldLines/);
+  assert.match(match, /พักก้อนนี้ไว้ก่อน/);
+  assert.match(match, /ปลดพัก/);
+
+  // ต้องบอกด้วยว่าทำไมถึงหาไม่เจอ และต้องไปอัปโหลดเดือนไหน
+  assert.match(match, /expectedStay/);
+  assert.match(match, /missingPeriods/);
+  assert.match(match, /ทำไมถึงหาคำจองไม่เจอ/);
+
+  // พักไว้โดยไม่บอกเหตุผลคือการซ่อนงาน ซึ่งเป็นคนละเรื่อง
+  assert.match(match, /HOLD_REASONS/);
+  // และต้องบอกว่ายอดไม่ได้หายไปไหน
+  assert.match(match, /ยังอยู่ในยอดคุม/);
+  assert.match(help, /พักไว้ไม่ใช่การซ่อน/);
+});

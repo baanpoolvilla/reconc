@@ -305,3 +305,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_issued_receipts_live
 INSERT INTO clearclose.schema_migrations (id, applied_at)
 VALUES ('003-issued-receipts', to_char(now() + interval '7 hours', 'YYYY-MM-DD"T"HH24:MI:SS'))
 ON CONFLICT (id) DO NOTHING;
+
+-- ── 004-line-holds ──────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS clearclose.line_holds (
+  bank_line_id     text PRIMARY KEY,
+  account          text NOT NULL DEFAULT '',
+  period           text NOT NULL DEFAULT '',
+  line_date        text NOT NULL DEFAULT '',
+  amount_satang    bigint NOT NULL DEFAULT 0,
+  detail           text NOT NULL DEFAULT '',
+  reason           text NOT NULL DEFAULT 'OTHER',
+  note             text NOT NULL DEFAULT '',
+  expected_period  text NOT NULL DEFAULT '',
+  held_by          text NOT NULL DEFAULT 'web',
+  held_at          text NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_line_holds_period ON clearclose.line_holds (period);
+
+CREATE INDEX IF NOT EXISTS idx_line_holds_expected ON clearclose.line_holds (expected_period);
+
+INSERT INTO clearclose.schema_migrations (id, applied_at)
+VALUES ('004-line-holds', to_char(now() + interval '7 hours', 'YYYY-MM-DD"T"HH24:MI:SS'))
+ON CONFLICT (id) DO NOTHING;

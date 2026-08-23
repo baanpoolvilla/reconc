@@ -11,6 +11,7 @@ import { Audit } from "./views-audit";
 import { type Dataset, thaiMonthLabel } from "../lib/dataset";
 import {
   type AppSettings,
+  type LineHold,
   type MatchDecision,
   type WorkspaceState,
   ALL_PERIODS,
@@ -54,13 +55,14 @@ const NAV: { id: ViewId; label: string; icon: string; group: string; step?: numb
 
 const VIEW_IDS = NAV.map((item) => item.id) as string[];
 
-export default function Workspace({ dataset: raw, source, databaseConfigured, online, serverSettings, serverDecisions, loadError }: {
+export default function Workspace({ dataset: raw, source, databaseConfigured, online, serverSettings, serverDecisions, serverHolds, loadError }: {
   dataset: Dataset;
   source: string;
   databaseConfigured: boolean;
   online: boolean;
   serverSettings: AppSettings | null;
   serverDecisions: MatchDecision[];
+  serverHolds: LineHold[];
   loadError?: string;
 }) {
   // ค่าจากเซิร์ฟเวอร์คือความจริงตอน SSR และตอน hydrate ส่วนสถานะฝั่งเบราว์เซอร์
@@ -68,8 +70,9 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
   const serverState = useMemo<WorkspaceState>(() => ({
     settings: serverSettings ? normalizeSettings(serverSettings) : DEFAULT_SETTINGS,
     decisions: serverDecisions ?? [],
+    holds: serverHolds ?? [],
     online,
-  }), [serverSettings, serverDecisions, online]);
+  }), [serverSettings, serverDecisions, serverHolds, online]);
 
   primeWorkspace(serverState);
   const clientState = useSyncExternalStore(subscribeWorkspace, getWorkspaceState, getServerWorkspaceState);
@@ -82,8 +85,8 @@ export default function Workspace({ dataset: raw, source, databaseConfigured, on
   // เดือนหนึ่งจะหาคู่เจอก็ต่อเมื่อรอบคำนวณเห็นทั้งสองเดือน การเลือกงวดเป็นเรื่องของ
   // "จะดูอะไร" ไม่ใช่ "จะคำนวณจากอะไร" จึงเกิดขึ้นทีหลังเสมอ
   const all = useMemo(
-    () => applySettings(raw, stored.settings, stored.decisions),
-    [raw, stored.settings, stored.decisions],
+    () => applySettings(raw, stored.settings, stored.decisions, stored.holds),
+    [raw, stored.settings, stored.decisions, stored.holds],
   );
 
   const periods = raw.meta.periods ?? [];

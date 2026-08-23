@@ -1,8 +1,11 @@
 import { getDb, ensureSchema } from "../../../lib/db/client.mjs";
 import {
   deleteDecision,
+  holdLine,
   listDecisions,
+  listHolds,
   loadStoredSettings,
+  releaseLine,
   saveDecision,
   saveStoredSettings,
 } from "../../../lib/db/repository.mjs";
@@ -35,6 +38,17 @@ type Body = {
     note?: string;
   };
   id?: string;
+  hold?: {
+    bankLineId?: string;
+    account?: string;
+    period?: string;
+    date?: string;
+    amountSatang?: number;
+    detail?: string;
+    reason?: string;
+    note?: string;
+    expectedPeriod?: string;
+  };
 };
 
 async function connect() {
@@ -51,15 +65,18 @@ const failed = (error: unknown) =>
 
 export async function GET() {
   if (!process.env.DATABASE_URL) {
-    return Response.json({ online: false, settings: null, decisions: [] });
+    return Response.json({ online: false, settings: null, decisions: [], holds: [] });
   }
   try {
     const db = await connect();
-    const [stored, decisions] = await Promise.all([loadStoredSettings(db), listDecisions(db)]);
+    const [stored, decisions, holds] = await Promise.all([
+      loadStoredSettings(db), listDecisions(db), listHolds(db),
+    ]);
     return Response.json({
       online: true,
       settings: stored ? normalizeSettings(stored) : null,
       decisions,
+      holds,
     });
   } catch (error) {
     return failed(error);
@@ -106,6 +123,26 @@ export async function POST(request: Request) {
       const removed = await deleteDecision(db, body.id);
       if (!removed) return Response.json({ online: true, error: "ไม่พบรายการนี้แล้ว" }, { status: 404 });
       return Response.json({ online: true, removed, decisions: await listDecisions(db) });
+    }
+
+    if (body.action === "holdLine") {
+      const hold = body.hold;
+      if (!hold?.bankLineId) {
+        return Response.json({ online: true, error: "ไม่ได้ระบุเงินเข้าที่จะพักไว้" }, { status: 400 });
+      }
+      // พักไว้โดยไม่บอกเหตุผล = ซ่อนงาน ซึ่งเป็นคนละเรื่องกับการพักไว้
+      if (!hold.reason) {
+        return Response.json({ online: true, error: "ต้องเลือกเหตุผลที่พักไว้" }, { status: 400 });
+      }
+      const saved = await holdLine(db, hold);
+      return Response.json({ online: true, hold: saved, holds: await listHolds(db) });
+    }
+
+    if (body.action === "releaseLine") {
+      if (!body.id) return Response.json({ online: true, error: "ไม่ได้ระบุรายการที่จะปลดพัก" }, { status: 400 });
+      const released = await releaseLine(db, body.id);
+      if (!released) return Response.json({ online: true, error: "ไม่พบรายการที่พักไว้นี้" }, { status: 404 });
+      return Response.json({ online: true, released, holds: await listHolds(db) });
     }
 
     return Response.json({ online: true, error: "ไม่รู้จักคำสั่งนี้" }, { status: 400 });

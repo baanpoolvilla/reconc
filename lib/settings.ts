@@ -197,6 +197,12 @@ export type SettlementProposal = {
   /** ใบที่ถูกเลือกแต่วันโอนไม่เข้ารอบปกติของเจ้านี้ */
   outOfWindowCount: number;
   lagDays: number[];
+  /** ช่วงวันเข้าพักที่คำจองของก้อนนี้น่าจะอยู่ — ย้อนจากรอบโอนของเจ้านั้น */
+  expectedStay: { anchor: string; from: string; to: string; periods: string[] } | null;
+  /** งวดในช่วงนั้นที่ระบบยังไม่มีข้อมูล — คือเดือนที่ต้องไปอัปโหลดเพิ่ม */
+  missingPeriods: string[];
+  /** จริงเมื่อก้อนนี้หาคำจองไม่ได้เพราะเอกสารยังมาไม่ครบ ไม่ใช่เพราะผิดพลาด */
+  suggestHold: boolean;
   candidates: SettlementCandidate[];
   selectedIds: string[];
 };
@@ -220,6 +226,8 @@ export type EffectiveDataset = {
   sourceReceiptSatang: number;
   activeRuleCount: number;
   settlements: SettlementProposal[];
+  holds: LineHold[];
+  heldSatang: number;
   /** บัญชีที่อัปโหลดแล้วแต่ยังไม่ได้ผูกช่องทางรับเงิน — จับคู่ไม่ได้จนกว่าจะผูก */
   unmappedAccounts: UnmappedAccount[];
 };
@@ -236,7 +244,7 @@ export const receiptExclusion = core.receiptExclusion as (
   receipt: Receipt, settings: AppSettings, booking?: Booking,
 ) => ExclusionHit | null;
 export const applySettings = core.applySettings as (
-  dataset: Dataset, settings: AppSettings, decisions?: MatchDecision[],
+  dataset: Dataset, settings: AppSettings, decisions?: MatchDecision[], holds?: LineHold[],
 ) => EffectiveDataset;
 
 export const dayGap = engine.dayGap as (left: string, right: string) => number;
@@ -257,7 +265,33 @@ export const scopeToPeriod = core.scopeToPeriod as (
 // ทั้งสองทางอ่านผ่าน external store ตัวเดียวกัน หน้าจอจึงไม่ต้องรู้ว่าอยู่โหมดไหน
 // และ SSR กับการ hydrate ครั้งแรกได้ค่าเดียวกันเสมอ
 
-export type WorkspaceState = { settings: AppSettings; decisions: MatchDecision[]; online: boolean };
+export type HoldReason = "PRIOR_PERIOD" | "AWAITING_DOCUMENT" | "NOT_REVENUE" | "OTHER";
+
+/** เงินเข้าที่ผู้ตรวจพักไว้ — ออกจากคิวงาน แต่ยอดยังอยู่ครบและปลดกลับได้ */
+export type LineHold = {
+  bankLineId: string;
+  account: string;
+  period: string;
+  date: string;
+  amountSatang: number;
+  detail: string;
+  reason: HoldReason | string;
+  note: string;
+  expectedPeriod: string;
+  heldBy: string;
+  heldAt: string;
+};
+
+export const HOLD_REASONS: Record<HoldReason, { label: string; detail: string }> = {
+  PRIOR_PERIOD: { label: "คำจองอยู่เดือนก่อน", detail: "รอบโอนของ OTA ย้อนไปถึงเดือนที่ยังไม่ได้อัปโหลด" },
+  AWAITING_DOCUMENT: { label: "รอเอกสารเพิ่ม", detail: "ยังไม่มีเอกสารที่จะใช้พิสูจน์ก้อนนี้" },
+  NOT_REVENUE: { label: "ไม่ใช่รายได้", detail: "เช่นโอนระหว่างบัญชีของกิจการเอง หรือเงินยืม" },
+  OTHER: { label: "อื่น ๆ", detail: "ต้องเขียนหมายเหตุกำกับ" },
+};
+
+export const HOLDS_STORAGE_KEY = "clearclose.holds.v1";
+
+export type WorkspaceState = { settings: AppSettings; decisions: MatchDecision[]; holds: LineHold[]; online: boolean };
 
 const readLocal = <T,>(key: string, fallback: T, revive: (raw: unknown) => T): T => {
   if (typeof window === "undefined") return fallback;
@@ -279,6 +313,7 @@ const writeLocal = (key: string, value: unknown) => {
 };
 
 const asDecisions = (raw: unknown): MatchDecision[] => (Array.isArray(raw) ? (raw as MatchDecision[]) : []);
+const asHolds = (raw: unknown): LineHold[] => (Array.isArray(raw) ? (raw as LineHold[]) : []);
 
 // สถานะฝั่งเบราว์เซอร์เท่านั้น ฝั่งเซิร์ฟเวอร์ไม่มี window จึงไม่เคยถูกเขียน
 // และไม่มีทางรั่วข้ามคำขอของคนละคน — ค่าที่ SSR ใช้มาจาก props ล้วน ๆ
@@ -297,6 +332,7 @@ export function primeWorkspace(seed: WorkspaceState) {
   state = seed.online ? seed : {
     settings: readLocal(SETTINGS_STORAGE_KEY, seed.settings, normalizeSettings),
     decisions: readLocal(DECISIONS_STORAGE_KEY, seed.decisions, asDecisions),
+    holds: readLocal(HOLDS_STORAGE_KEY, seed.holds, asHolds),
     online: false,
   };
 }
@@ -323,12 +359,12 @@ function commit(next: WorkspaceState) {
 
 /** ค่าที่ใช้อยู่จริงตอนนี้ — เรียกจากตัวบันทึกซึ่งทำงานหลัง hydrate เสมอ */
 function current(): WorkspaceState {
-  return state ?? { settings: DEFAULT_SETTINGS, decisions: [], online: false };
+  return state ?? { settings: DEFAULT_SETTINGS, decisions: [], holds: [], online: false };
 }
 
 type SaveResult = { ok: boolean; error?: string };
 
-async function post(body: unknown): Promise<{ ok: boolean; error?: string; decisions?: MatchDecision[] }> {
+async function post(body: unknown): Promise<{ ok: boolean; error?: string; decisions?: MatchDecision[]; holds?: LineHold[] }> {
   const response = await fetch("/api/workspace", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -391,16 +427,59 @@ export async function removeDecision(id: string): Promise<SaveResult> {
   return result;
 }
 
+/**
+ * พักเงินเข้าไว้
+ *
+ * ต่างจากการจับคู่ตรงที่ไม่ได้บอกว่าเงินก้อนนี้คือรายการไหน แค่บอกว่า "ยังพิสูจน์
+ * ไม่ได้ตอนนี้ และนี่คือเหตุผล" ยอดยังอยู่ในยอดคุมของ statement ครบเหมือนเดิม
+ */
+export async function holdLine(hold: Omit<LineHold, "heldBy" | "heldAt">): Promise<SaveResult> {
+  const currentState = current();
+  const local: LineHold = {
+    ...hold,
+    heldBy: "web",
+    heldAt: new Date(Date.now() + 7 * 3600 * 1000).toISOString().replace("Z", ""),
+  };
+  const holds = [...currentState.holds.filter((item) => item.bankLineId !== local.bankLineId), local];
+  commit({ ...currentState, holds });
+
+  if (!currentState.online) {
+    writeLocal(HOLDS_STORAGE_KEY, holds);
+    return { ok: true };
+  }
+  const result = await post({ action: "holdLine", hold: local });
+  if (!result.ok) commit(currentState);
+  else if (result.holds) commit({ ...currentState, holds: result.holds as LineHold[] });
+  return result;
+}
+
+export async function releaseLine(bankLineId: string): Promise<SaveResult> {
+  const currentState = current();
+  const holds = currentState.holds.filter((item) => item.bankLineId !== bankLineId);
+  commit({ ...currentState, holds });
+
+  if (!currentState.online) {
+    writeLocal(HOLDS_STORAGE_KEY, holds);
+    return { ok: true };
+  }
+  const result = await post({ action: "releaseLine", id: bankLineId });
+  if (!result.ok) commit(currentState);
+  else if (result.holds) commit({ ...currentState, holds: result.holds as LineHold[] });
+  return result;
+}
+
 if (typeof window !== "undefined") {
   // แก้ค่าที่แท็บหนึ่ง ให้แท็บอื่นที่เปิดค้างไว้เห็นตรงกัน (เฉพาะโหมดออฟไลน์)
   window.addEventListener("storage", (event) => {
     const currentState = current();
     if (currentState.online) return;
-    if (event.key !== SETTINGS_STORAGE_KEY && event.key !== DECISIONS_STORAGE_KEY && event.key !== null) return;
+    const keys = [SETTINGS_STORAGE_KEY, DECISIONS_STORAGE_KEY, HOLDS_STORAGE_KEY];
+    if (event.key !== null && !keys.includes(event.key)) return;
     commit({
       online: false,
       settings: readLocal(SETTINGS_STORAGE_KEY, DEFAULT_SETTINGS, normalizeSettings),
       decisions: readLocal(DECISIONS_STORAGE_KEY, [], asDecisions),
+      holds: readLocal(HOLDS_STORAGE_KEY, [], asHolds),
     });
   });
 }
