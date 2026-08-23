@@ -370,7 +370,7 @@ test("a document imported by mistake can be deleted, and says what goes with it"
 
 
 test("the fix queue shows every instalment of the same reservation", async () => {
-  const match = await read("../app/views-match.tsx");
+  const match = await read("../app/views-match.tsx") + await read("../app/ui.tsx");
   const css = await read("../app/globals.css");
 
   // ยอดลอย ๆ ใบเดียวอธิบายตัวเองไม่ได้ — "มัดจำวันจอง + ที่เหลือวัน Check-in =
@@ -515,4 +515,47 @@ test("a matched row opens the three source documents behind it", async () => {
 
   assert.match(css, /\.group-detail/);
   assert.match(css, /tr\.detail-row/);
+});
+
+test("a booking split across rows shows its other instalments, not just its total", async () => {
+  const home = await read("../app/views-home.tsx");
+  const ui = await read("../app/ui.tsx");
+
+  // อาการจริงบนจอ: คำจอง ฿7,000 จ่ายสองงวด ฿4,000 กับ ฿3,000 แต่ละงวดจับคู่คนละ
+  // กลุ่ม พอเปิดดูทีละกลุ่ม จะเห็น "ยอดรวมคำจอง ฿7,000" อยู่ข้าง ๆ ฿4,000
+  // โดยไม่มีอะไรบอกว่ามันคนละอย่างกัน
+  assert.match(home, /BookingInstalments/);
+  assert.match(ui, /export function BookingInstalments/);
+
+  // ป้ายต้องบอกให้ชัดว่ายอดนั้นเป็นของทั้งใบจอง ไม่ใช่ของแถวนี้
+  assert.match(home, /ยอดรวมทั้งคำจอง/);
+  assert.match(home, /รับเงินแล้วทุกงวด/);
+  assert.match(home, /จาก ยอดคำจอง/);
+
+  // และรายการงวดต้องขึ้นครั้งเดียวต่อหนึ่งเลขที่จอง แม้กลุ่มจะมีหลายใบ
+  assert.match(home, /new Set\(group\.receipts\.map\(\(row\) => row\.reservationNo\)\)/);
+
+  // รายการงวดต้องบอกว่างวดอื่นเคลียร์แล้วหรือยัง และรวมกันครบยอดคำจองไหม
+  assert.match(ui, /กระทบยอดแล้ว/);
+  assert.match(ui, /ยังค้าง/);
+  assert.match(ui, /ครบพอดี/);
+});
+
+test("a booking's paid figure comes from the receipts, not the ledger's two slots", async () => {
+  const home = await read("../app/views-home.tsx");
+
+  // บัญชีแยกประเภทมีช่องบันทึกการจ่ายแค่สองช่อง คำจองที่จ่ายเป็นงวดจึงมักบันทึก
+  // ไว้แค่งวดแรก — 82 แถวในเดือนกรกฎาคมเป็นแบบนั้น เอามาโชว์ว่า "จ่ายมาแล้ว"
+  // จะบอกผิดว่ายังจ่ายไม่ครบ ทั้งที่ปิดยอดไปแล้ว
+  assert.match(home, /paidFor/);
+  assert.match(home, /รับเงินแล้วทุกงวด/);
+  assert.match(home, /item\.reservationNo === reservationNo/);
+  assert.ok(!home.includes("bookingPaidSatang"), "ต้องไม่เอายอดจากช่อง Payment ของ ledger มาโชว์อีก");
+
+  // ค้างชำระยังมาจากบัญชีแยกประเภท จึงต้องบอกที่มาไว้ข้าง ๆ
+  assert.match(home, /ตามบัญชีแยกประเภท/);
+
+  // ป้าย "งวดที่เหลือ" อ่านเหมือนยังไม่ได้จ่าย ทั้งที่แถวนั้นคือเงินที่รับมาแล้ว
+  assert.match(home, /จ่ายวัน Check-in/);
+  assert.ok(!home.includes("งวดที่เหลือ วัน Check-in"));
 });

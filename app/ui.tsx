@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, type ReactNode, useContext } from "react";
-import type { Dataset } from "../lib/dataset";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { type Dataset, baht, thaiDate } from "../lib/dataset";
 import type { AppSettings, EffectiveDataset, MatchDecision } from "../lib/settings";
 
 // Primitives and the shared workspace context.
@@ -113,6 +113,69 @@ export function Progress({ done, total, label, outside = 0 }: {
           <b className="progress-outside"> · อีก {outside.toLocaleString("en-US")} รายการยังไม่เข้าสู่การกระทบยอด</b>
         )}
       </small>
+    </div>
+  );
+}
+
+/**
+ * งวดการจ่ายทั้งหมดของคำจองใบเดียวกัน
+ *
+ * คำจองหนึ่งใบจ่ายได้หลายงวด และงวดที่ผู้ตรวจกำลังดูอยู่จะอธิบายตัวเองไม่ได้เลย
+ * ถ้าไม่เห็นงวดอื่น ๆ ของคำจองเดียวกัน — ยอด 3,000 บาทลอย ๆ ไม่บอกอะไร แต่
+ * "มัดจำ 3,900 วันจอง + ที่เหลือ 3,000 วัน Check-in = 6,900 เท่ายอดคำจองพอดี"
+ * คือหลักฐานที่กดยืนยันได้ทันที
+ *
+ * ผูกกันด้วยเลขที่การจอง ซึ่งเป็นกุญแจเดียวที่รายงานการรับเงินกับบัญชีแยกประเภท
+ * ใช้ตรงกัน
+ */
+export function BookingInstalments({ reservationNo, highlightId }: { reservationNo: string; highlightId?: string }) {
+  const { all } = useWorkspace();
+  const dataset = all.dataset;
+
+  const rows = useMemo(() => {
+    if (!reservationNo) return null;
+    const booking = dataset.bookings.find((item) => item.reservationNo === reservationNo);
+    const receipts = dataset.receipts
+      .filter((item) => item.reservationNo === reservationNo)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (receipts.length < 2 && !booking) return null;
+
+    const matched = new Set(dataset.reconciliation.groups.flatMap((group) => group.receipts.map((row) => row.id)));
+    return { booking, receipts, matched };
+  }, [dataset, reservationNo]);
+
+  if (!rows || rows.receipts.length < 2) return null;
+
+  const paid = rows.receipts.reduce((sum, item) => sum + item.amountSatang, 0);
+  const total = rows.booking?.totalSatang ?? 0;
+
+  return (
+    <div className="instalments">
+      <b>คำจองนี้จ่าย {rows.receipts.length} งวด</b>
+      <ol>
+        {rows.receipts.map((item, index) => (
+          <li key={item.id} className={item.id === highlightId ? "current" : ""}>
+            <span className="instalment-no">{index + 1}</span>
+            <span>
+              <b>{baht(item.amountSatang)}</b>
+              <small>
+                {thaiDate(item.date)} · {item.method}
+                {item.date === item.checkIn && " · วัน Check-in"}
+                {item.date === rows.booking?.createdDate && " · วันที่จอง"}
+              </small>
+            </span>
+            <span className="instalment-state">
+              {item.id === highlightId ? "กำลังดูอยู่" : rows.matched.has(item.id) ? "✓ กระทบยอดแล้ว" : "ยังค้าง"}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {total > 0 && (
+        <p className={paid === total ? "instalment-sum ok" : "instalment-sum"}>
+          รวมทุกงวด {baht(paid)} · ยอดคำจอง {baht(total)}
+          {paid === total ? " · ครบพอดี" : ` · ต่างอยู่ ${baht(total - paid)}`}
+        </p>
+      )}
     </div>
   );
 }

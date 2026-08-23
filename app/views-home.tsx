@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { Banner, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, Step, StepList, type StepState, useWorkspace } from "./ui";
+import { Banner, BookingInstalments, EmptyState, PageHeading, PanelTitle, Pill, Progress, Stat, Step, StepList, type StepState, useWorkspace } from "./ui";
 import { type MatchGroup, baht, thaiDate, thaiDateTime, thaiMonthLabel } from "../lib/dataset";
 import { ALL_PERIODS, DECISION_REASONS, type DecisionReason } from "../lib/settings";
 
@@ -229,6 +229,14 @@ export function Home() {
  * รายละเอียดที่เห็นจึงเป็นของรอบที่จับคู่จริง ไม่ใช่ของวันที่เปิดดู
  */
 function GroupDetail({ group }: { group: MatchGroup }) {
+  const { all } = useWorkspace();
+
+  // ยอดที่รับมาจริงของคำจองใบนั้น นับจากรายงานการรับเงินทุกงวด ไม่ใช่จากช่อง
+  // Payment ของบัญชีแยกประเภท ซึ่งมีแค่สองช่องและมักบันทึกไว้แค่งวดแรก
+  const paidFor = (reservationNo: string) => all.dataset.receipts
+    .filter((item) => item.reservationNo === reservationNo)
+    .reduce((sum, item) => sum + item.amountSatang, 0);
+
   return (
     <div className="group-detail">
       <div className="detail-grid">
@@ -240,7 +248,15 @@ function GroupDetail({ group }: { group: MatchGroup }) {
               <div><dt>ผู้เข้าพัก</dt><dd>{row.guest || "—"}</dd></div>
               <div><dt>วันที่รับเงิน</dt><dd>{thaiDate(row.receiptDate)}</dd></div>
               <div><dt>ช่องทางรับเงิน</dt><dd>{row.method || "—"}</dd></div>
-              <div><dt>ยอดที่รับมา</dt><dd className="num">{baht(row.amountSatang)}</dd></div>
+              <div>
+                <dt>ยอดที่รับมา</dt>
+                <dd className="num">
+                  {baht(row.amountSatang)}
+                  {row.bookingTotalSatang > row.amountSatang && (
+                    <small className="of-total">จาก ยอดคำจอง {baht(row.bookingTotalSatang)}</small>
+                  )}
+                </dd>
+              </div>
               <div><dt>ห้อง</dt><dd>{[row.roomNumber, row.roomType].filter(Boolean).join(" · ") || "—"}</dd></div>
               <div><dt>ช่องทางการจอง</dt><dd>{row.channel || "—"}</dd></div>
               <div><dt>แถวในไฟล์</dt><dd className="mono">{row.sourceRow || "—"}</dd></div>
@@ -257,15 +273,33 @@ function GroupDetail({ group }: { group: MatchGroup }) {
               <div><dt>วัน Check-out</dt><dd>{row.checkOut ? thaiDate(row.checkOut) : "—"}</dd></div>
               <div><dt>จำนวนคืน</dt><dd>{row.bookingNights || "—"}</dd></div>
               <div><dt>สถานะคำจอง</dt><dd>{row.bookingStatus || "—"}</dd></div>
-              <div><dt>ยอดรวมคำจอง</dt><dd className="num">{baht(row.bookingTotalSatang)}</dd></div>
-              <div><dt>จ่ายมาแล้ว</dt><dd className="num">{baht(row.bookingPaidSatang)}</dd></div>
+              <div><dt>ยอดรวมทั้งคำจอง</dt><dd className="num">{baht(row.bookingTotalSatang)}</dd></div>
+              {/* บัญชีแยกประเภทมีช่องบันทึกการจ่ายแค่สองช่อง และคำจองที่จ่ายเป็นงวด
+                  มักบันทึกไว้แค่งวดแรก — 70 จาก 237 คำจองในเดือนกรกฎาคมเป็นแบบนั้น
+                  เอาตัวเลขนั้นมาโชว์ว่า "จ่ายมาแล้ว" จึงบอกผิดว่ายังจ่ายไม่ครบ
+                  ยอดที่รับจริงต้องนับจากรายงานการรับเงิน ซึ่งมีทุกงวด */}
               <div>
-                <dt>ค้างชำระ</dt>
+                <dt>รับเงินแล้วทุกงวด</dt>
+                <dd className="num">{baht(paidFor(row.reservationNo))}</dd>
+              </div>
+              <div>
+                <dt>ค้างชำระ<small className="dt-note">ตามบัญชีแยกประเภท</small></dt>
                 <dd className={`num ${row.bookingBalanceDueSatang ? "negative" : "zero-delta"}`}>
                   {baht(row.bookingBalanceDueSatang)}
                 </dd>
               </div>
             </dl>
+          ))}
+
+          {/* ยอดรวมคำจองเป็นยอดของ "ทั้งใบจอง" ไม่ใช่ของแถวนี้ — คำจองที่จ่ายเป็นงวด
+              จึงอ่านแล้วขัดกันทันที: ยอดของงวดเดียววางอยู่ข้างยอดของทั้งใบจอง โดยไม่มีอะไรบอกว่าคนละอย่างกัน
+              รายการงวดทั้งหมดคือสิ่งที่อธิบาย และบอกด้วยว่างวดอื่นเคลียร์แล้วหรือยัง */}
+          {[...new Set(group.receipts.map((row) => row.reservationNo))].filter(Boolean).map((reservationNo) => (
+            <BookingInstalments
+              key={reservationNo}
+              reservationNo={reservationNo}
+              highlightId={group.receipts.find((row) => row.reservationNo === reservationNo)?.id}
+            />
           ))}
         </section>
 
@@ -400,7 +434,7 @@ export function Report() {
     type,
     label: {
       "1:1": "ระบบจับ 1 ต่อ 1", "N:1": "ระบบจับ หลายต่อ 1", "1:N": "ระบบจับ 1 ต่อหลาย",
-      "1:1+CHECKIN": "งวดที่เหลือ วัน Check-in", "1:1+DEPOSIT": "ตรง พร้อมค่าประกัน",
+      "1:1+CHECKIN": "จ่ายวัน Check-in", "1:1+DEPOSIT": "ตรง พร้อมค่าประกัน",
       MANUAL: "คนยืนยันเอง", OTA: "แตกยอด OTA",
     }[type],
     groups: groups.filter((group) => group.type === type),
@@ -612,7 +646,7 @@ export function Report() {
                       {group.decision
                         ? (group.type === "OTA" ? "แตกยอด OTA" : "คนยืนยัน")
                         : group.type === "1:1+DEPOSIT" ? "ตรง พร้อมค่าประกัน"
-                        : group.type === "1:1+CHECKIN" ? "งวดที่เหลือ วัน Check-in" : group.type}
+                        : group.type === "1:1+CHECKIN" ? "จ่ายวัน Check-in" : group.type}
                     </Pill>
                     {group.decision?.reasonLabel && <small className="block">{group.decision.reasonLabel}</small>}
                     <small className="block open-hint">{openGroup === group.id ? "▾ ปิด" : "▸ ดูรายละเอียด"}</small>
